@@ -90,6 +90,14 @@ Tick **Analyse photos automatically** above the inspection photos to skip the ma
 
 Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region such as `san luis obispo, ca`, a stable code such as `patch_small_drywall_hole`, a short repair title, a low and high amount in cents, a three-letter currency code, a pricing unit, the source, and the effective date. Use currencies with two decimal places. The optional pricing region on the comparison form must match the catalog region. If there is no matching entry, the app saves the repair assessment and shows that a price is unavailable. A comparison keeps a snapshot of the price shown at the time it ran.
 
+## Fill in charges from the deduction letter
+
+With `NEXT_PUBLIC_BACKEND=supabase`, the renter no longer types the itemized charges. After they upload the landlord's letter and choose **Continue**, the server sends the letter (and the lease, if there is one) to Claude, or to Gemini if Claude is unavailable, and copies out each charge with its amount, plus the address, names, move-out date, letter date, deposit and refund where the documents state them.
+
+The wizard then opens the Details step with those filled in and asks the renter to check each one against the letter. Everything stays editable. Details the renter already entered are kept, and **Read the letter again** replaces the charge list on request. The reader only transcribes; it leaves out totals and anything it can't read, and never judges a charge. If it can't read the letter, the renter enters the charges by hand as before, and **No letter / enter manually** skips reading altogether.
+
+It uses the same keys as the audit (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
+
 ## Run the charge-by-charge audit
 
 With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same keys as the case assistant.

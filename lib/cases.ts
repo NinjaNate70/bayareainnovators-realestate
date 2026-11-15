@@ -257,3 +257,47 @@ export async function auditCase(value: RentalCase): Promise<RentalCase> {
     charges: value.charges.map((c) => ({ ...c, ...findings.get(c.id) })),
   };
 }
+
+export type LetterReading = {
+  read_by: "claude" | "gemini";
+  readable: boolean;
+  charges: { name: string; room: string; amount: number }[];
+  address: string;
+  landlord: string;
+  renter: string;
+  move_out_date: string;
+  letter_date: string;
+  deposit: number | null;
+  returned: number | null;
+  notes: string;
+};
+// Has the server read the uploaded deduction letter and return what it says,
+// for the renter to confirm. Throws with a message fit to show the renter.
+export async function readLetter(value: RentalCase): Promise<LetterReading> {
+  await saveCase(value);
+  const session = unwrap(await getBackend().auth.getSession()).session;
+  if (!session) throw new Error("Sign in to keep going. Your draft is still here.");
+  const response = await fetch("/api/cases/extract", {
+    method: "POST",
+    signal: AbortSignal.timeout(75_000),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ caseId: value.id, consent: true }),
+  }).catch((cause) => {
+    throw new Error(
+      cause instanceof Error && cause.name === "TimeoutError"
+        ? "Reading your letter took too long. Enter the charges by hand, or try again."
+        : "We couldn’t reach the letter reader. Check your connection and try again.",
+    );
+  });
+  const result = (await response.json().catch(() => ({}))) as Partial<LetterReading> & {
+    error?: string;
+  };
+  if (!response.ok || !Array.isArray(result.charges))
+    throw new Error(
+      result.error ?? "We couldn’t read your letter. Enter the charges by hand.",
+    );
+  return result as LetterReading;
+}

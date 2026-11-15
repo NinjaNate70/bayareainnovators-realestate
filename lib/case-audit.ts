@@ -77,7 +77,7 @@ const cents = (value: number) => Math.round(value * 100) / 100;
 // ---------------------------------------------------------------------------
 // Providers
 
-type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
+export type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
 
 // Gemini answers 429 or a 5xx when a model is briefly overloaded. Within the
 // call's time limit it gets one more try before the caller falls back.
@@ -99,7 +99,7 @@ const outcome = (service: string, error: unknown) =>
 const bothFailed = (first: string, a: unknown, second: string, b: unknown) =>
   Object.assign(new Error(`${outcome(first, a)}; ${outcome(second, b)}.`), { name: 'AiServiceError' });
 
-async function callGemini(options: { apiKey: string; model: string; system: string; parts: GeminiPart[]; schema: Json; fetch: Fetch; timeout: number; retryDelay?: number }) {
+export async function callGemini(options: { apiKey: string; model: string; system: string; parts: GeminiPart[]; schema: Json; fetch: Fetch; timeout: number; retryDelay?: number }) {
   const until = Date.now() + options.timeout;
   for (let attempt = 0; ; attempt += 1) {
     const left = until - Date.now();

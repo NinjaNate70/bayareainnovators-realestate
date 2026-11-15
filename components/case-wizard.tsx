@@ -16,7 +16,14 @@ import { Shell, ActionBar } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UploadZone } from "@/components/upload-zone";
-import { auditCase, freshCase, money, readCase, saveCase } from "@/lib/cases";
+import {
+  auditCase,
+  freshCase,
+  money,
+  readCase,
+  readLetter,
+  saveCase,
+} from "@/lib/cases";
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import { unwrap } from "@/lib/cases";
@@ -35,6 +42,9 @@ export function CaseWizard() {
   const [busy, setBusy] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [manual, setManual] = useState(false);
+  // Reading the uploaded letter to fill in the charges.
+  const [reading, setReading] = useState(false);
+  const [letterNote, setLetterNote] = useState("");
   const summary = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -152,6 +162,60 @@ export function CaseWizard() {
       window.scrollTo(0, 0);
     });
   }
+  // Reads the uploaded letter and fills in what it says. The renter's own
+  // entries are kept: only empty details are filled, and the charge list is
+  // replaced only when it is empty or the renter asks to read the letter again.
+  async function scanLetter(current: RentalCase) {
+    setReading(true);
+    setError("");
+    setLetterNote("");
+    try {
+      const found = await readLetter(current);
+      if (!found.readable) {
+        setLetterNote(
+          `We couldn’t read itemized charges from your letter. ${found.notes} Enter them below.`,
+        );
+        return;
+      }
+      patch({
+        demo: false,
+        charges: found.charges.map((c) => ({
+          id: crypto.randomUUID(),
+          name: c.name,
+          room: c.room,
+          amount: c.amount,
+          verdict: "info" as const,
+          sources: [],
+          low: 0,
+          high: 0,
+          reason: "Review needed.",
+        })),
+        address: current.address || found.address,
+        landlord: current.landlord || found.landlord,
+        renter: current.renter || found.renter,
+        moveOut: current.moveOut || found.move_out_date,
+        received: current.received || found.letter_date,
+        deposit: current.deposit || found.deposit || 0,
+        returned: current.returned || found.returned || 0,
+      });
+      setLetterNote(
+        `We read ${found.charges.length} charge${found.charges.length === 1 ? "" : "s"} from your letter and filled in the details we could find. Check every description, amount and date against the letter before you continue. ${found.notes}`,
+      );
+    } catch (cause) {
+      setLetterNote(
+        cause instanceof Error
+          ? cause.message
+          : "We couldn’t read your letter. Enter the charges below.",
+      );
+    } finally {
+      setReading(false);
+    }
+  }
+  const canScan =
+    hosted &&
+    !!data &&
+    !data.demo &&
+    data.evidence.some((f) => f.kind === "letter");
   function next() {
     if (!data) return;
     if (
@@ -163,6 +227,14 @@ export function CaseWizard() {
       setError(
         "Choose a deduction letter, or select “No letter / enter manually” to continue.",
       );
+      return;
+    }
+    if (step === 0 && canScan && !manual && data.charges.length === 0) {
+      // Fill in the charges from the letter, then show them for checking.
+      const completedStep = Math.max(data.completedStep, 1);
+      patch({ completedStep });
+      navigate(1);
+      void scanLetter({ ...data, completedStep });
       return;
     }
     if (step === 1) {
@@ -365,7 +437,16 @@ export function CaseWizard() {
                 ][step]
               }
             </p>
-            {busy ? (
+            {reading ? (
+              <div className="loading-state" role="status" aria-busy="true">
+                <LoaderCircle className="spin" size={32} />
+                <h3>Reading your letter</h3>
+                <p>
+                  Finding each charge, the dates and the deposit amounts. This
+                  usually takes 10 to 30 seconds. You’ll check everything next.
+                </p>
+              </div>
+            ) : busy ? (
               <div className="loading-state" role="status" aria-busy="true">
                 <LoaderCircle className="spin" size={32} />
                 <h3>Preparing your case file</h3>
@@ -432,9 +513,9 @@ export function CaseWizard() {
                       No letter / enter manually
                     </label>
                     <p className="small muted">
-                      Automatic extraction is not connected. For your own
-                      documents, you’ll enter and confirm charges in the next
-                      step.
+                      {hosted
+                        ? "When you continue, your letter and lease are sent to Anthropic’s Claude or Google Gemini to read the charges, dates and amounts. You’ll check and correct them on the next step. Tick “No letter / enter manually” to type them yourself instead."
+                        : "Automatic extraction is not connected. For your own documents, you’ll enter and confirm charges in the next step."}
                     </p>
                   </div>
                 )}
@@ -544,6 +625,21 @@ export function CaseWizard() {
                     </div>
                     <div id="charges" tabIndex={-1}>
                       <h3>Itemized charges</h3>
+                      {letterNote && (
+                        <p className="notice" role="status">
+                          {letterNote}
+                        </p>
+                      )}
+                      {canScan && (
+                        <Button
+                          variant="outline"
+                          onClick={() => void scanLetter(data)}
+                        >
+                          {data.charges.length
+                            ? "Read the letter again (replaces these charges)"
+                            : "Read the charges from my letter"}
+                        </Button>
+                      )}
                       {invalid === "charges" && (
                         <p className="inline-error">{error}</p>
                       )}
@@ -737,7 +833,7 @@ export function CaseWizard() {
             {step > 0 && (
               <Button
                 variant="outline"
-                disabled={busy}
+                disabled={busy || reading}
                 onClick={() => navigate(step - 1)}
               >
                 <ArrowLeft size={18} aria-hidden="true" />
@@ -745,7 +841,7 @@ export function CaseWizard() {
               </Button>
             )}
             <Button
-              disabled={busy}
+              disabled={busy || reading}
               onClick={() => (step === 3 ? void run() : next())}
             >
               {busy
