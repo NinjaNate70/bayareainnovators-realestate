@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { ActionBar } from "@/components/shell";
+import { FileDrop } from "@/components/file-drop";
 import { SourceChip } from "@/components/evidence";
 import { estimateRecovery } from "@/lib/estimate";
 import { hosted } from "@/lib/backend";
@@ -93,6 +94,42 @@ export function RepliesTab({
               Paste the message exactly as received. This becomes a source in
               your reply.
             </p>
+            {/* Kept above the text box so it is on screen without scrolling. */}
+            {data.reply ? (
+              <Button
+                variant="outline"
+                style={{ margin: "4px 0 16px" }}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Replace your edited reply with a new template?",
+                    )
+                  )
+                    void prepare();
+                }}
+                disabled={busy}
+              >
+                Prepare a new draft
+              </Button>
+            ) : (
+              <Button
+                style={{ margin: "4px 0 16px" }}
+                disabled={busy || data.stale}
+                onClick={() => void prepare()}
+              >
+                {busy ? (
+                  <LoaderCircle
+                    className="spin"
+                    size={18}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Sparkles size={18} aria-hidden="true" />
+                )}
+                {busy ? "Preparing…" : "Prepare reply"}
+                <ArrowRight size={18} aria-hidden="true" />
+              </Button>
+            )}
             <label htmlFor="incoming" className="field-label">
               Landlord response
             </label>
@@ -116,60 +153,35 @@ export function RepliesTab({
               response clears the earlier
               suggestion.
             </p>
-            <label
-              htmlFor="response-file"
-              className="field-label"
-              style={{ marginTop: 20 }}
-            >
-              Or import a text file (.txt, up to 1MB)
-            </label>
-            <input
-              id="response-file"
-              type="file"
-              accept="text/plain,.txt"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (
-                  !file.name.toLowerCase().endsWith(".txt") ||
-                  file.size > 1024 * 1024
-                ) {
-                  setError(
-                    "Choose a .txt response under 1MB. For PDFs or images, paste the response text above.",
-                  );
-                  return;
-                }
-                try {
-                  onUpdate({ incoming: await file.text(), reply: "" });
-                  setStatus(
-                    "Text imported. Review it before preparing a reply.",
-                  );
-                  setError("");
-                } catch {
-                  setError(
-                    "The file could not be read. Paste the text instead.",
-                  );
-                }
-                e.target.value = "";
-              }}
-            />
-            {data.reply && (
-              <Button
-                variant="outline"
-                style={{ marginTop: 16 }}
-                onClick={() => {
+            <div style={{ marginTop: 20 }}>
+              <FileDrop
+                label="Or import a text file (.txt, up to 1MB)"
+                accept="text/plain,.txt"
+                hint=".txt only · up to 1MB"
+                onFiles={async ([file]) => {
                   if (
-                    window.confirm(
-                      "Replace your edited reply with a new template?",
-                    )
-                  )
-                    void prepare();
+                    !file.name.toLowerCase().endsWith(".txt") ||
+                    file.size > 1024 * 1024
+                  ) {
+                    setError(
+                      "Choose a .txt response under 1MB. For PDFs or images, paste the response text above.",
+                    );
+                    return;
+                  }
+                  try {
+                    onUpdate({ incoming: await file.text(), reply: "" });
+                    setStatus(
+                      "Text imported. Review it before preparing a reply.",
+                    );
+                    setError("");
+                  } catch {
+                    setError(
+                      "The file could not be read. Paste the text instead.",
+                    );
+                  }
                 }}
-                disabled={busy}
-              >
-                Prepare a new draft
-              </Button>
-            )}
+              />
+            </div>
           </Card>
           <Card className="reply-guidance">
             <Quote size={24} aria-hidden="true" />
@@ -245,24 +257,14 @@ export function RepliesTab({
       <p className="small muted" role="status" style={{ marginTop: 16 }}>
         {status}
       </p>
-      <ActionBar>
-        {data.reply ? (
+      {data.reply && (
+        <ActionBar>
           <Button onClick={copy}>
             <Copy size={18} aria-hidden="true" />
             Copy reply
           </Button>
-        ) : (
-          <Button disabled={busy || data.stale} onClick={() => void prepare()}>
-            {busy ? (
-              <LoaderCircle className="spin" size={18} aria-hidden="true" />
-            ) : (
-              <Sparkles size={18} aria-hidden="true" />
-            )}
-            {busy ? "Preparing…" : "Prepare reply"}
-            <ArrowRight size={18} aria-hidden="true" />
-          </Button>
-        )}
-      </ActionBar>
+        </ActionBar>
+      )}
     </>
   );
 }

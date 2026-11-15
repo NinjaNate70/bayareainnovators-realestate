@@ -161,11 +161,15 @@ async function finishUpload(
     throw new Error(
       "Sign in to keep going. Keep this tab open to retain the selected file.",
     );
-  await flushCases();
   const { bucket, path, file, caseId, sourceId, kind } = upload;
-  const metadata = unwrap(
-    await backend.storage.from(bucket).upload(path, file, { upsert: true }),
-  );
+  // The file bytes are the slow part, so send them while any case saves still
+  // queued from autosave finish, instead of waiting for those first. The case
+  // row already exists by now, which is all the upload needs.
+  const [, stored] = await Promise.all([
+    flushCases(),
+    backend.storage.from(bucket).upload(path, file, { upsert: true }),
+  ]);
+  const metadata = unwrap(stored);
   const row = unwrap(await backend.data.getCase(caseId));
   if (!row)
     throw new Error(

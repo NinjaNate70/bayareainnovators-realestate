@@ -92,13 +92,13 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
   const newestResult = results.find((result) => result.move_in_photo_id === newestIn && result.move_out_photo_id === newestOut);
   const hasNewestResult = Boolean(newestResult);
 
-  const Analyze = useCallback(async (moveInId: string, moveOutId: string) => {
+  const analyze = useCallback(async (moveInId: string, moveOutId: string) => {
     setAutoBusy(true);
     setAutoError('');
     try {
       saveResult(await requestComparison(supabase, { moveInId, moveOutId, spot: roomName.trim().slice(0, 120) || 'Room' }));
     } catch (cause) {
-      setAutoError(cause instanceof Error ? cause.message : 'Could not Analyze the photos.');
+      setAutoError(cause instanceof Error ? cause.message : 'Could not analyze the photos.');
     } finally {
       setAutoBusy(false);
     }
@@ -110,8 +110,8 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
     // One automatic attempt per pair; a failure waits for the renter to retry.
     if (attempted.current.has(pair)) return;
     attempted.current.add(pair);
-    queueMicrotask(() => void Analyze(newestIn, newestOut));
-  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, Analyze]);
+    queueMicrotask(() => void analyze(newestIn, newestOut));
+  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, analyze]);
 
   if (!moveIn.length || !moveOut.length) return null;
   const names = new Map(photos.map(({ id, original_name }) => [id, original_name]));
@@ -121,7 +121,7 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
       {autoError && !autoBusy && (
         <p role="alert" className={styles.error}>
           Automatic analysis didn’t finish: {autoError}{' '}
-          <button type="button" className={styles.secondary} onClick={() => void Analyze(newestIn!, newestOut!)}>Try again</button>
+          <button type="button" className={styles.secondary} onClick={() => void analyze(newestIn!, newestOut!)}>Try again</button>
         </p>
       )}
       {newestResult && !open && <div role="status"><ComparisonResult result={newestResult} photoNames={names} /></div>}
@@ -201,7 +201,7 @@ function ComparisonForm({ supabase, moveIn, moveOut, renderPhoto, results, histo
               </div>
               <label className={styles.comparisonConsent}>
                 <input key={`${moveInId}/${moveOutId}`} name="consent" type="checkbox" required />
-                <span>These photos show the same spot. I agree to let our system Analyze both photos.</span>
+                <span>These photos show the same spot. I agree to let our system analyze both photos.</span>
               </label>
               <button className={styles.primary} disabled={busy || historyLoading}>{busy ? 'Comparing…' : 'Run comparison'}</button>
             </>

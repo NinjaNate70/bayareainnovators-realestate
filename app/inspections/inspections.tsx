@@ -6,6 +6,7 @@ import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-p
 import { supabase as client } from '@/lib/supabase/client';
 import { PRIVACY_VERSION, TERMS_VERSION } from '@/lib/auth/terms';
 import { TermsAgreementText } from '@/components/auth/terms-agreement';
+import { FileDrop } from '@/components/file-drop';
 import { ComparePhotos } from './compare-photos';
 import { MoveOutAudit } from './move-out-audit';
 import styles from './inspections.module.css';
@@ -291,7 +292,7 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
         </div>
         <label className={styles.comparisonConsent}>
           <input type="checkbox" checked={auto} onChange={(event) => chooseAuto(event.target.checked)} />
-          <span>Analyze photos automatically. When a room has a move-in and a move-out photo, I agree to let our system Analyze the newest pair and show the result here.</span>
+          <span>Analyze photos automatically. When a room has a move-in and a move-out photo, I agree to let our system analyze the newest pair and show the result here.</span>
         </label>
         {!loaded && <p role="status">Loading photos…</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}
@@ -380,6 +381,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [roomId, setRoomId] = useState(rooms[0]?.id ?? '');
@@ -448,11 +450,17 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
       pendingId.current = null;
       setFile(null);
       for (const input of form.querySelectorAll<HTMLInputElement>('input[type="file"]')) input.value = '';
+      // The photo is stored: say so now. Refreshing the gallery (a room query and
+      // signed links for every photo) and any automatic analysis that follows
+      // run afterward, each with its own status.
       setMessage('Photo saved. You can open it on another device with the same account.');
-      await onSaved();
+      setBusy(false);
+      setRefreshing(true);
+      // The gallery reports its own loading problems, so a failure here is not an upload failure.
+      await onSaved().catch(() => {});
+      setRefreshing(false);
     } catch (cause) {
       setError(errorMessage(cause, 'Could not upload your photo. Try again.'));
-    } finally {
       setBusy(false);
     }
   }
@@ -471,8 +479,8 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
             </select></label>
           </div>
           <div className={styles.phases}>
-            <label>Take a photo<input type="file" accept="image/*" capture="environment" onChange={(event) => selectFile(event.target.files?.[0] ?? null)} /></label>
-            <label>Choose an existing photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" onChange={(event) => selectFile(event.target.files?.[0] ?? null)} /></label>
+            <FileDrop label="Take a photo" accept="image/*" capture="environment" prompt="Tap to take a photo" hint="Opens your camera" onFiles={([photo]) => selectFile(photo)} />
+            <FileDrop label="Choose an existing photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" hint="JPG, PNG, WebP or HEIC" onFiles={([photo]) => selectFile(photo)} />
           </div>
           {file && <p className={styles.selectedFile}>Selected photo <strong>{file.name}</strong></p>}
           <button className={styles.primary} disabled={!file || busy}>{busy ? 'Uploading…' : 'Upload photo'}</button>
@@ -480,6 +488,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
       </form>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {message && <p role="status">{message}</p>}
+      {refreshing && <p role="status">Refreshing your photos…</p>}
       {auditRoomId && <p><a href={`#audit-room-${auditRoomId}`} className={styles.back}>Back to audit room</a></p>}
     </section>
   );

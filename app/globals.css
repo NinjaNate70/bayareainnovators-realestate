@@ -1159,13 +1159,66 @@ textarea {
   align-items: center;
   gap: 12px;
   color: var(--green);
+  position: relative;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    border-color 150ms;
 }
-.upload-zone input {
-  font-size: 14px;
-  background: #fff;
-  padding: 8px;
-  max-width: 100%;
-  color: var(--ink);
+.upload-zone:hover,
+.upload-zone[data-over] {
+  background: var(--mint);
+  border-color: var(--green);
+}
+.upload-zone:focus-within {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+.upload-zone[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.upload-prompt {
+  cursor: pointer;
+}
+/* The native file input stays in the page for keyboards and screen readers. */
+.upload-zone input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.upload-status {
+  min-height: 20px;
+}
+.upload-status svg {
+  vertical-align: -3px;
+}
+.file-thumb {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bg);
+}
+.file-list li > .file-thumb-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  background: var(--mint);
+}
+.file-list li > .upload-badge {
+  flex: none;
+}
+.file-list li[data-state="failed"] {
+  border-color: var(--navy);
 }
 .upload-group > p {
   margin: 8px 0;
@@ -2499,9 +2552,6 @@ textarea {
 .breadcrumb a {
   display: inline-flex;
   align-items: center;
-}
-.upload-zone input {
-  font-size: 16px;
 }
 .inline-error {
   display: block;

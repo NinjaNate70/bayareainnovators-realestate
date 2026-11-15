@@ -327,6 +327,38 @@ test("money fields behave the same, and a case can be saved without itemized cha
   await expect(page).toHaveURL(/\/case\/[0-9a-f-]{36}$/);
   await expect(page.getByText("No itemized charges to audit.")).toBeVisible();
   await expect(page.getByText("$0", { exact: true })).toHaveCount(0);
+  // "Prepare reply" is visible without scrolling on a laptop screen.
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto(`${page.url()}?tab=replies`);
+  await expect(
+    page.getByRole("button", { name: "Prepare reply", exact: true }),
+  ).toBeInViewport();
+});
+test("uploads use one clean drop zone with thumbnails", async ({ page }) => {
+  await signup(page, `drop-${Date.now()}@example.test`);
+  await page.getByLabel("No letter / enter manually").check();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByLabel("Property address")
+    .fill("5 Drop Street, San Luis Obispo, CA");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page).toHaveURL(/step=photos/);
+  const prompt = page.getByText("Drop files here or browse");
+  await expect(prompt.first()).toBeVisible();
+  // The native input stays for keyboard and screen readers, but is not visible.
+  const input = page.getByLabel("Move-in photos (optional)", { exact: true });
+  expect(await input.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
+  // Clicking the prompt opens the file chooser, so the whole zone is the target.
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    prompt.first().click(),
+  ]);
+  await chooser.setFiles({ name: "move-in.png", mimeType: "image/png", buffer: photo });
+  await expect(
+    page.getByRole("button", { name: "Remove move-in.png", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".file-list img.file-thumb")).toHaveCount(1);
+  await expect(page.getByText("Saving 1 file")).toHaveCount(0);
 });
 test("Create account stays disabled until the terms are accepted", async ({
   page,
