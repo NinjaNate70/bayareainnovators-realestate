@@ -180,7 +180,7 @@ const fileLabel = (file: AuditFile) =>
 // One request to a model, with files attached. Claude does the work; Gemini,
 // when its key is set, stands in if Claude fails. `until` is the moment by
 // which the job must be done, stand-in included.
-async function ask(keys: Keys, call: Fetch, job: { system: string; text: string[]; files: AuditFile[]; schema: Json; until: number; effort?: 'low' | 'medium' }) {
+export async function ask(keys: Keys, call: Fetch, job: { system: string; text: string[]; files: AuditFile[]; schema: Json; until: number; effort?: 'low' | 'medium' }) {
   let first: unknown;
   if (keys.claudeKey) {
     const left = job.until - Date.now();
@@ -330,7 +330,7 @@ export function normalizeFindings(
 
 // At least one key is needed. retryDelay: pause before retrying a busy Gemini
 // model; tests set it to 0.
-type Keys = { geminiKey?: string; geminiModel: string; claudeKey?: string; claudeModel: string; retryDelay?: number };
+export type Keys = { geminiKey?: string; geminiModel: string; claudeKey?: string; claudeModel: string; retryDelay?: number };
 
 // Supporting documents are read a few at a time, in parallel, so adding more
 // of them does not make the audit wait longer.

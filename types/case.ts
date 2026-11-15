@@ -28,8 +28,31 @@ export interface Charge {
   // this charge. Present (possibly empty) only on charges the audit reviewed.
   requests?: string[];
 }
+// What the AI saw when comparing one move-in and one move-out photo for a
+// charge. It describes visible changes only: never who caused them, whether a
+// charge is allowed, or a cost. Boxes are approximate, on a 0-1000 scale of the
+// move-out photo: [x_min, y_min, x_max, y_max].
+export interface PhotoComparison {
+  before: string;
+  after: string;
+  checkedAt: string;
+  by: "claude" | "gemini";
+  sameView: boolean;
+  finding: "no_change" | "ordinary_wear" | "new_damage" | "already_there" | "unclear";
+  chargeLink: "shows_damage" | "shows_no_damage" | "not_shown" | "unclear";
+  summary: string;
+  differences: {
+    what: string;
+    where: string;
+    before: string;
+    after: string;
+    kind: "damage" | "wear" | "cleanliness" | "already_there" | "moved_or_missing" | "angle_or_lighting";
+    box: [number, number, number, number] | null;
+  }[];
+  retake: string;
+}
 export interface RentalCase {
-  photoPairs?: Record<string, { before: string; after: string }>;
+  photoPairs?: Record<string, { before: string; after: string; analysis?: PhotoComparison }>;
   id: string;
   demo: boolean;
   address: string;

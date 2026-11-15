@@ -1973,6 +1973,118 @@ textarea {
   border-radius: 50%;
   background: #176f5a12;
 }
+/* AI photo comparison on the case Photos tab */
+.photo-observation > div {
+  min-width: 0;
+  flex: 1;
+}
+.comparison-result h3 {
+  margin-bottom: 8px;
+}
+.comparison-result h4 {
+  margin: 20px 0 8px;
+}
+.comparison-list {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  display: grid;
+  gap: 14px;
+}
+.comparison-list li {
+  color: var(--ink);
+}
+.comparison-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.comparison-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 6px 0 0;
+}
+.comparison-sides dt {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.comparison-sides dd {
+  margin: 0;
+  color: var(--ink);
+}
+.comparison-locate {
+  margin-top: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.comparison-kind.kind-damage,
+.photo-box.kind-damage {
+  --mark: var(--not-allowed);
+  --mark-bg: var(--not-allowed-bg);
+}
+.comparison-kind.kind-wear,
+.comparison-kind.kind-cleanliness,
+.photo-box.kind-wear,
+.photo-box.kind-cleanliness {
+  --mark: var(--disputable);
+  --mark-bg: var(--disputable-bg);
+}
+.comparison-kind.kind-already_there,
+.comparison-kind.kind-moved_or_missing,
+.comparison-kind.kind-angle_or_lighting,
+.photo-box.kind-already_there,
+.photo-box.kind-moved_or_missing,
+.photo-box.kind-angle_or_lighting {
+  --mark: var(--info);
+  --mark-bg: var(--info-bg);
+}
+.comparison-kind {
+  color: var(--mark);
+  background: var(--mark-bg);
+}
+.photo-box {
+  position: absolute;
+  border: 2px solid var(--mark, var(--green));
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+.photo-box.active {
+  border-width: 3px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 0 9999px rgba(16, 31, 42, 0.35);
+}
+.photo-box-number {
+  position: absolute;
+  top: -11px;
+  left: -11px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 11px;
+  background: var(--mark, var(--green));
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+@media (max-width: 767px) {
+  .comparison-sides {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
 .photo-observation {
   display: flex;
   align-items: flex-start;
