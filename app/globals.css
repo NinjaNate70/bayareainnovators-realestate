@@ -64,6 +64,24 @@
 .outbox-list li + li { margin-top:16px; }
 .confirmation-email { margin:16px 0 0; overflow-wrap:anywhere; }
 .auth-confirm-links { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+.account-trigger { border:1px solid var(--control); border-radius:8px; background:white; width:100%; display:flex; align-items:center; gap:12px; min-height:48px; padding:10px; text-align:left; margin-bottom:24px; }
+.account-trigger:hover { background:var(--mint); }
+.account-trigger.compact { width:44px; height:44px; padding:0; border:0; margin:0; }
+.account-avatar { display:grid; place-items:center; background:var(--mint); color:var(--green); width:40px; height:40px; border-radius:50%; font-size:14px; font-weight:700; flex-shrink:0; }
+.account-name { flex:1; min-width:0; overflow-wrap:anywhere; font-size:14px; font-weight:700; }
+.account-name small { display:block; font-size:12px; font-weight:400; color:var(--muted); }
+.account-menu-items { display:grid; gap:12px; }
+.account-menu-items > button,.account-menu-items > a { min-height:48px; display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--control); border-radius:8px; background:white; font-weight:600; }
+.account-menu-items > button:hover,.account-menu-items > a:hover { background:var(--mint); }
+.account-menu-items > button svg:last-child:not(:first-child),.account-menu-items > a svg:last-child { margin-left:auto; }
+.account-menu-items > p { margin-top:16px; }
+.account-case-list { margin:0; padding:0; list-style:none; display:grid; gap:12px; }
+.account-case-list a { border:1px solid var(--control); border-radius:8px; display:flex; gap:12px; align-items:center; padding:16px; min-height:64px; }
+.account-case-list a:hover { background:var(--mint); }
+.account-case-list span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.account-case-list small { display:block; color:var(--muted); margin-top:4px; }
+.auth-mobile-header .brand-lockup,.auth-brand { min-height:44px; }
+@media(min-width:1024px) { .mobile-account { display:none; } }
 .protected-screen { max-width:560px; min-height:70dvh; margin:auto; padding:64px 24px; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; gap:16px; }
 .protected-screen h1 { font-size:28px; }
 .auth-status-icon { width:64px; height:64px; display:grid; place-items:center; border-radius:16px; background:var(--mint); color:var(--green); }

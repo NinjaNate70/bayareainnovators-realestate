@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import type { CaseTab } from "@/types/case";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { AccountMenu } from "@/components/auth/account-menu";
 
 export function Shell({
   children,
@@ -76,6 +77,7 @@ export function Shell({
           </>
         )}
         <div className="sidebar-foot">
+          <AccountMenu />
           <div className="sidebar-note">
             <ShieldCheck aria-hidden="true" size={22} />
             <strong>A little clarity goes a long way.</strong>
@@ -103,12 +105,13 @@ export function Shell({
             <span>
               {caseId
                 ? "Case file"
-                : path === "/case/new"
+                : path === "/account" ? "Account settings" : path === "/case/new"
                   ? "New case"
                   : "Overview"}
             </span>
           </div>
           <div className="topbar-end">
+            <div className="mobile-account"><AccountMenu compact /></div>
             <span className="scope-tag">California renters</span>
             <Sheet
               title="A clearer path forward"

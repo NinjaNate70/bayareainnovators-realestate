@@ -71,8 +71,8 @@ export function Landing() {
           </p>
           <div className="hero-actions">
             <Button asChild className="desktop-start">
-              <Link href="/case/new">
-                Start my case
+              <Link href="/signup">
+                Start your case
                 <ArrowRight size={18} aria-hidden="true" />
               </Link>
             </Button>
@@ -284,8 +284,8 @@ export function Landing() {
       </section>
       <ActionBar>
         <Button asChild>
-          <Link href="/case/new">
-            Start my case
+          <Link href="/signup">
+            Start your case
             <ArrowRight size={18} aria-hidden="true" />
           </Link>
         </Button>
