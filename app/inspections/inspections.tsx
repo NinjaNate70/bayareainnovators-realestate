@@ -3,6 +3,7 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
+import { ComparePhotos } from './compare-photos';
 import styles from './inspections.module.css';
 
 const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -269,6 +270,10 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
                 </div>
               ))}
             </div>
+            <ComparePhotos supabase={supabase} roomId={room.id} photos={room.inspection_photos} renderPhoto={(id) => {
+              const photo = room.inspection_photos.find((item) => item.id === id);
+              return photo ? <PhotoPreview key={`${id}/${gallery.urls[photo.storage_path]}`} url={gallery.urls[photo.storage_path]} photo={photo} /> : null;
+            }} />
           </section>
         ))}
       </section>

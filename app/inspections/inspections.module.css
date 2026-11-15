@@ -75,6 +75,19 @@
 .photos img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #e2ece7; border-radius: 0.4rem; }
 .photos time { color: #435d56; display: block; margin-top: 0.35rem; font-size: 0.85rem; }
 
+.comparison { margin-top: 0.9rem; }
+.comparisonForm { margin-top: 0.75rem; }
+.comparisonPair img { margin-top: 0.5rem; width: 100%; max-height: 12rem; object-fit: contain; background: #e2ece7; border-radius: 0.4rem; }
+.page label.comparisonConsent { display: flex; align-items: center; gap: 0.55rem; font-weight: 500; }
+.page .comparisonConsent input { width: 1.15rem; height: 1.15rem; min-height: auto; flex-shrink: 0; }
+.comparisonResult { background: #f4f8f5; border-radius: 0.5rem; padding: 0.9rem; margin-top: 0.65rem; }
+.comparisonResult dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.65rem; font-size: 0.9rem; }
+.comparisonResult dt { font-weight: 750; }
+.comparisonResult dd { overflow-wrap: anywhere; }
+.comparisonNote { font-size: 0.85rem; }
+.comparisonHistory { margin-top: 0.75rem; }
+.comparisonHistory summary { cursor: pointer; font-weight: 750; }
+
 @media (max-width: 35rem) {
   .page { padding-top: 1rem; }
   .inlineForm, .form .phases { grid-template-columns: 1fr; }
