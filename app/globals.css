@@ -2759,3 +2759,21 @@ textarea[aria-invalid="true"] {
   width: 100%;
   min-height: 120px;
 }
+
+/* My documents */
+.library-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.library-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.library-list li > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

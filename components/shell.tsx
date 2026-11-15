@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   BookOpen,
   FileText,
+  FolderOpen,
   Home,
   Images,
   MessageSquare,
@@ -37,6 +38,7 @@ export function Shell({
   const global = [
     { label: "Home", href: "/", icon: Home },
     { label: "New case", href: "/case/new", icon: Plus },
+    { label: "Documents", href: "/documents", icon: FolderOpen },
   ];
   const tabs = [
     { label: "Audit", key: "audit", icon: BookOpen },

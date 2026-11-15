@@ -8,7 +8,7 @@ const authOptions = {
   autoRefreshToken: false,
   detectSessionInUrl: false,
 };
-const buckets = ["documents", "photos", "inspection-photos"];
+const buckets = ["documents", "photos", "inspection-photos", "library"];
 const respond = (error: string, status: number, code = "delete_failed") =>
   Response.json(
     { error, code },
