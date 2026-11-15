@@ -41,6 +41,12 @@ export function validateCase(input: CaseInput) {
     if (!Number.isSafeInteger(n) || n < 0 || n > 100_000_000)
       fail("validation", "Enter valid amounts for this case.");
   if (
+    input.situation_text !== undefined &&
+    (typeof input.situation_text !== "string" ||
+      input.situation_text.length > 4000)
+  )
+    fail("validation", "Shorten your notes to 4,000 characters or fewer.");
+  if (
     !Number.isInteger(input.completed_step) ||
     input.completed_step < 0 ||
     input.completed_step > 4

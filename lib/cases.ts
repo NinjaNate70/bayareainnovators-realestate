@@ -35,6 +35,7 @@ export function freshCase(): RentalCase {
     replyBy: "",
     incoming: "",
     reply: "",
+    notes: "",
   };
 }
 export function unwrap<T>(response: Result<T>): T {

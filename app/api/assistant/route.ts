@@ -23,7 +23,8 @@ function allow(userId: string) {
   return true;
 }
 
-const caseColumns = 'address, renter_name, landlord_name, move_out_date, letter_received_date, deposit_cents, returned_cents, completed_step, audited, letter_text, reply_by_date, incoming_text, reply_text, charges, evidence';
+// Every column, so a project without the newer notes column still works.
+const caseColumns = '*';
 
 // Names the service and status only (for example "Gemini request failed (404)"),
 // so a setup problem can be told apart from a slow answer. Never includes keys.

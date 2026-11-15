@@ -82,6 +82,7 @@ export type CaseRecord = {
   reply_by_date: string | null;
   incoming_text: string;
   reply_text: string;
+  situation_text?: string | null;
   charges: { name?: string; room?: string; amount_cents?: number; verdict?: string; reason?: string }[];
   evidence: { name?: string; kind?: string }[];
 };
@@ -130,6 +131,8 @@ export function summarizeCase(row: CaseRecord | null, today: string) {
     reply_by_date: row.reply_by_date,
     landlord_response: clip(row.incoming_text, 1500),
     reply_draft: clip(row.reply_text, 1500),
+    // The renter's own explanation of their situation: context, not verified fact.
+    renter_account: clip(row.situation_text, 2000),
   };
 }
 
@@ -150,6 +153,7 @@ const ground = [
   'Only state a California deposit rule if it is in the numbered guide below, and list the ids of the sections you relied on. If the guide does not cover the question, say so plainly and suggest the California Courts Self-Help Guide or a tenant legal aid service.',
   'Never say what a court will decide, never say the landlord acted in bad faith or broke the law, and never promise an amount. You may say what the guide says a landlord must do and point out where the renter\'s records do or do not show it.',
   'Use only facts present in the case details. If a needed fact is missing, say which one and where in the app to add it.',
+  'renter_account in the case details is the renter\'s own explanation of their situation (roommates, agreements, circumstances). Take it into account and refer to it as what they told you. It is unverified, so do not treat it as proof, and suggest what would back it up.',
   'Write for a worried renter: plain words, short sentences, at most 170 words, no markdown headings. Numbered steps are fine.',
 ].join('\n');
 
