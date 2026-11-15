@@ -1,6 +1,9 @@
 export type Verdict = "fair" | "disputable" | "not-allowed" | "info";
 export type CaseTab = "audit" | "photos" | "letter" | "replies";
 export interface Evidence {
+  fileId?: string;
+  path?: string;
+  bucket?: "documents" | "photos";
   id: string;
   name: string;
   kind: "letter" | "lease" | "before" | "after";

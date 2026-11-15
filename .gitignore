@@ -13,6 +13,9 @@
 # testing
 /coverage
 /output/ui-qa
+/output/auth-qa
+/test-results
+/playwright-report
 
 # next.js
 /.next/
