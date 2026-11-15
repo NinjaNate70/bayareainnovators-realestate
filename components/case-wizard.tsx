@@ -16,7 +16,7 @@ import { Shell, ActionBar } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UploadZone } from "@/components/upload-zone";
-import { freshCase, money, readCase, saveCase } from "@/lib/cases";
+import { auditCase, freshCase, money, readCase, saveCase } from "@/lib/cases";
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import { unwrap } from "@/lib/cases";
@@ -224,31 +224,51 @@ export function CaseWizard() {
     if (!data) return;
     setBusy(true);
     setError("");
-    try {
-      // TODO(api): Submit confirmed evidence and facts to the audit service; never apply demo findings to user uploads.
-      const value: RentalCase = {
-        ...data,
-        audited: true,
-        stale: false,
-        charges: data.demo
-          ? data.charges
-          : data.charges.map((c) => ({
+    // Without the audit service, charges are recorded and left open.
+    const recorded = (reason: string): RentalCase => ({
+      ...data,
+      audited: true,
+      stale: false,
+      charges: data.demo
+        ? data.charges
+        : data.charges.map(({ requests, ...c }) => {
+            void requests;
+            return {
               ...c,
-              verdict: "info",
+              verdict: "info" as const,
               sources: data.evidence
                 .filter((e) => e.kind === "letter")
                 .map((e) => e.id),
               low: 0,
               high: 0,
-              reason:
-                "Your charge is recorded. Automated evidence and legal review is not connected in this MVP. Add supporting records and review the charge before drawing a conclusion.",
-            })),
-      };
+              reason,
+            };
+          }),
+    });
+    try {
+      let value: RentalCase;
+      if (data.demo || !hosted)
+        // Demo findings are never applied to a renter's own uploads.
+        value = recorded(
+          "Your charge is recorded. Automated evidence review needs a signed-in account on the hosted service. Add supporting records and review the charge before drawing a conclusion.",
+        );
+      else
+        try {
+          value = await auditCase(data);
+        } catch (cause) {
+          if (!(cause instanceof Error && "code" in cause && cause.code === "setup"))
+            throw cause;
+          value = recorded(
+            "Your charge is recorded. The automated audit isn’t set up on this site yet. Add supporting records and review the charge before drawing a conclusion.",
+          );
+        }
       await saveCase(value);
       router.push(`/case/${value.id}`);
-    } catch {
+    } catch (cause) {
       setError(
-        "The case could not be saved. Your details are still on this page. Retry when browser storage is available.",
+        cause instanceof Error && "code" in cause
+          ? `${cause.message} Your details are still on this page.`
+          : "The case could not be saved. Your details are still on this page. Retry in a moment.",
       );
       setBusy(false);
     }
@@ -699,7 +719,7 @@ export function CaseWizard() {
                         {data.demo
                           ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
                           : hosted
-                            ? "Your documents are stored privately in your account. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."
+                            ? "Running the audit sends your deduction letter, lease, photos and case details to OpenAI and Google Gemini. They read your documents and photos, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>
@@ -727,7 +747,9 @@ export function CaseWizard() {
               onClick={() => (step === 3 ? void run() : next())}
             >
               {busy
-                ? "Preparing…"
+                ? step === 3 && hosted && !data.demo
+                  ? "Reading your evidence…"
+                  : "Preparing…"
                 : step === 3
                   ? "Run audit"
                   : step === 2

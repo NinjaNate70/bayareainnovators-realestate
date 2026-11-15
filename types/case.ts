@@ -21,6 +21,9 @@ export interface Charge {
   sources: string[];
   low: number;
   high: number;
+  // Set by the automated audit: what the renter could add or check to settle
+  // this charge. Present (possibly empty) only on charges the audit reviewed.
+  requests?: string[];
 }
 export interface RentalCase {
   photoPairs?: Record<string, { before: string; after: string }>;

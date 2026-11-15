@@ -209,3 +209,40 @@ export async function getFile(
       .createSignedUrl(evidence.path, 300),
   ).signedUrl;
 }
+
+// Runs the automated audit on a saved case and returns the case with each
+// charge's finding applied. The renter's letter, lease and photos are read on
+// the server under their own session.
+export async function auditCase(value: RentalCase): Promise<RentalCase> {
+  await saveCase(value);
+  const session = unwrap(await getBackend().auth.getSession()).session;
+  if (!session) throw new Error("Sign in to keep going. Your draft is still here.");
+  const response = await fetch("/api/cases/audit", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ caseId: value.id, consent: true }),
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    charges?: (Pick<
+      RentalCase["charges"][number],
+      "id" | "verdict" | "reason" | "sources" | "low" | "high"
+    > & { requests: string[] })[];
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.charges)
+    throw Object.assign(
+      new Error(result.error ?? "The audit couldn’t finish. Try again."),
+      { code: result.code ?? "audit_failed" },
+    );
+  const findings = new Map(result.charges.map((c) => [c.id, c]));
+  return {
+    ...value,
+    audited: true,
+    stale: false,
+    charges: value.charges.map((c) => ({ ...c, ...findings.get(c.id) })),
+  };
+}
