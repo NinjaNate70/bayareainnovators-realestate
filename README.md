@@ -112,11 +112,12 @@ The result is information to help a renter organise their case, not legal advice
 
 ## Enable the case assistant
 
-The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through three agents:
+The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents from two providers:
 
-1. A **coordinator** (Gemini) reads the question and picks one specialist.
-2. A **specialist** (Gemini) drafts the answer: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
-3. A **reviewer** (OpenAI) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+1. A **specialist** (Gemini) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
+2. A **reviewer** (OpenAI) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+
+An answer usually takes 10 to 30 seconds. If a model fails or is too slow, the message names the service and status, such as `Gemini request failed (404)`, which points to a wrong model name or key.
 
 California rules come only from the [California Courts guide to security deposits](https://selfhelp.courts.ca.gov/guide-security-deposits-california), stored as numbered sections in `lib/case-assistant.ts`. The assistant is told to say so when the guide doesn't cover a question, and each answer lists the sections it relied on. Update those sections when the guide changes. The assistant gives information, not legal advice.
 

@@ -372,7 +372,9 @@ export function CaseWizard() {
                 <p>
                   {data.demo
                     ? "Opening the illustrative audit."
-                    : "Saving your confirmed details for review."}
+                    : hosted
+                      ? "Reading your letter, lease and photos, then checking each charge. This usually takes 20 to 50 seconds. If it can’t finish within a minute, you’ll see why and can try again."
+                      : "Saving your confirmed details for review."}
                 </p>
               </div>
             ) : (

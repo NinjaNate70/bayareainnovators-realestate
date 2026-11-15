@@ -219,11 +219,22 @@ export async function auditCase(value: RentalCase): Promise<RentalCase> {
   if (!session) throw new Error("Sign in to keep going. Your draft is still here.");
   const response = await fetch("/api/cases/audit", {
     method: "POST",
+    // The server answers within a minute; past that, stop waiting.
+    signal: AbortSignal.timeout(75_000),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({ caseId: value.id, consent: true }),
+  }).catch((cause) => {
+    throw Object.assign(
+      new Error(
+        cause instanceof Error && cause.name === "TimeoutError"
+          ? "The audit took too long. Your case is saved. Try again."
+          : "We couldn’t reach the audit service. Check your connection and try again.",
+      ),
+      { code: "audit_failed" },
+    );
   });
   const result = (await response.json().catch(() => ({}))) as {
     charges?: (Pick<
