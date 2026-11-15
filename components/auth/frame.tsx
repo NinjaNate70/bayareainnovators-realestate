@@ -5,11 +5,15 @@ import {
   Check,
   FileText,
   FolderCheck,
+  LoaderCircle,
   LockKeyhole,
   ShieldCheck,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { hosted } from "@/lib/backend";
+import { useState, type ReactNode } from "react";
+import { backendName, getBackend, hosted } from "@/lib/backend";
+import { oauthEnabled } from "@/lib/auth/terms";
+import { Button } from "@/components/ui/button";
+import { FormError } from "./form";
 export function AuthFrame({
   children,
   title,
@@ -132,12 +136,34 @@ export function AuthFooter() {
     </footer>
   );
 }
-// TODO(supabase): render Continue with Google only when the flag and OAuth capability are both enabled.
-export function OAuthButton() {
-  const supportsOAuth = false;
-  return process.env.NEXT_PUBLIC_ENABLE_OAUTH === "true" && supportsOAuth ? (
-    <button className="button button-outline" type="button">
-      Continue with Google
-    </button>
-  ) : null;
+export function OAuthButton({ returnTo }: { returnTo?: string | null }) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  if (!oauthEnabled(backendName, process.env.NEXT_PUBLIC_ENABLE_OAUTH))
+    return null;
+  async function start() {
+    setBusy(true);
+    setError("");
+    const r = await getBackend().auth.signInWithGoogle(returnTo);
+    // On success the browser is already leaving for Google.
+    if (r.error) {
+      setError(r.error.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="auth-oauth">
+      <Button
+        type="button"
+        variant="outline"
+        className="auth-submit"
+        disabled={busy}
+        onClick={() => void start()}
+      >
+        {busy && <LoaderCircle size={19} className="spin" aria-hidden="true" />}
+        {busy ? "Opening Google…" : "Continue with Google"}
+      </Button>
+      <FormError message={error} />
+    </div>
+  );
 }

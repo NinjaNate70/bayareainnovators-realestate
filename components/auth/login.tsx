@@ -54,7 +54,13 @@ export function Login() {
   const signup = `/signup${search.get("returnTo") ? `?returnTo=${encodeURIComponent(search.get("returnTo")!)}` : ""}`;
   return (
     <AuthFrame title="Welcome back." description="Pick up where you left off.">
-      <OAuthButton />
+      <OAuthButton returnTo={search.get("returnTo")} />
+      {search.get("error") === "oauth" && (
+        <p className="notice" role="alert">
+          We couldn’t finish signing in with Google. Try again, or sign in with
+          your email and password.
+        </p>
+      )}
       {notice && (
         <p className="notice" role="status">
           {notice}

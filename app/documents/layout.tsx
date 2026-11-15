@@ -4,5 +4,5 @@ export default function DocumentsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <ProtectedRoute>{children}</ProtectedRoute>;
+  return <ProtectedRoute requireTerms>{children}</ProtectedRoute>;
 }

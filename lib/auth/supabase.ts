@@ -37,6 +37,10 @@ const endRecovery = () => localStorage.removeItem(recoveryKey);
 let explicitSignOut = false;
 let lastUserId: string | null = null;
 
+const metadataText = (user: RemoteUser, key: string) =>
+  typeof user.user_metadata?.[key] === "string"
+    ? (user.user_metadata[key] as string)
+    : undefined;
 function toUser(user: RemoteUser): User {
   return {
     id: user.id,
@@ -48,10 +52,11 @@ function toUser(user: RemoteUser): User {
     email_confirmed_at: user.email_confirmed_at,
     confirmed_at: user.confirmed_at,
     user_metadata: {
-      name:
-        typeof user.user_metadata?.name === "string"
-          ? user.user_metadata.name
-          : "",
+      name: metadataText(user, "name") ?? "",
+      terms_version: metadataText(user, "terms_version"),
+      terms_accepted_at: metadataText(user, "terms_accepted_at"),
+      privacy_version: metadataText(user, "privacy_version"),
+      consented_at: metadataText(user, "consented_at"),
     },
     app_metadata: { provider: user.app_metadata?.provider ?? "email" },
   };
@@ -273,6 +278,19 @@ export const supabaseAuth: AuthClient = {
         return fail("invalid_credentials", generic);
       endRecovery();
       return { user: toUser(data.user), session: toSession(data.session) };
+    }),
+  signInWithGoogle: (returnTo) =>
+    remote(async () => {
+      // Google returns to /auth/callback, which finishes the sign-in and
+      // continues to returnTo. The URL must be in Supabase's redirect allowlist.
+      const { error } = await requireSupabase().auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: landing("/auth/callback", safeReturnTo(returnTo) ?? ""),
+        },
+      });
+      if (error) authFail(error);
+      return null;
     }),
   signOut: (options) =>
     remote(async () => {

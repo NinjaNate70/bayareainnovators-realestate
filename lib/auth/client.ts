@@ -20,6 +20,8 @@ export interface AuthClient {
   }): Promise<
     Result<{ user: User; session: Session | null; flow_id?: string }>
   >;
+  // Leaves the page for Google; the result only reports a failure to start.
+  signInWithGoogle(returnTo?: string | null): Promise<Result<null>>;
   signOut(options?: { scope: "local" | "global" }): Promise<Result<null>>;
   getSession(): Promise<Result<{ session: Session | null }>>;
   getUser(): Promise<Result<{ user: User | null }>>;

@@ -271,6 +271,12 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
   await page.setViewportSize({ width: 375, height: 667 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/signup");
+  await expect(
+    page.getByRole("heading", { name: "A place for your case." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
+  ).toHaveCount(0);
   await page.screenshot({
     path: test.info().outputPath("signup-mobile.png"),
     fullPage: true,
@@ -281,6 +287,26 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+test("a cancelled Google sign-in returns to sign in with a clear message", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  await page.goto(
+    "/auth/callback?error=access_denied&error_description=The+user+denied+access",
+  );
+  await expect(page).toHaveURL(/\/login\?error=oauth$/);
+  await expect(
+    page.getByText(
+      "We couldn’t finish signing in with Google. Try again, or sign in with your email and password.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
+  ).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
 test("money fields behave the same, and a case can be saved without itemized charges", async ({

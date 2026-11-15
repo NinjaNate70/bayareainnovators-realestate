@@ -15,7 +15,13 @@ export interface User {
   updated_at: string;
   email_confirmed_at?: string;
   confirmed_at?: string;
-  user_metadata: { name: string };
+  user_metadata: {
+    name: string;
+    terms_version?: string;
+    terms_accepted_at?: string;
+    privacy_version?: string;
+    consented_at?: string;
+  };
   app_metadata: { provider: string };
 }
 export interface Session {

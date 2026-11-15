@@ -1,6 +1,7 @@
 import type { Checkpoint, Session, User } from "../../types/backend";
 import type { RentalCase } from "../../types/case";
-import { getBackend } from "../backend";
+import { getBackend, hosted } from "../backend";
+import { termsAccepted, termsGatePath } from "./terms";
 const buffers = new Map<string, Checkpoint>();
 const snapshots = new Map<string, Checkpoint>();
 let identity: Session | null = null;
@@ -108,6 +109,12 @@ export async function recoveryDestination(
   session: Session,
   returnTo?: string | null,
 ) {
+  const path = await resumePath(session, returnTo);
+  return hosted && !termsAccepted(session.user.user_metadata)
+    ? termsGatePath(path)
+    : path;
+}
+async function resumePath(session: Session, returnTo?: string | null) {
   const { safeReturnTo } = await import("./validation");
   await settleProfile(session.user);
   const { recoverUploads } = await import("../cases");

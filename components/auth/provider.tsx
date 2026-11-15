@@ -14,6 +14,7 @@ import { LoaderCircle, ShieldCheck } from "lucide-react";
 import type { Session } from "@/types/backend";
 import { getBackend, hosted } from "@/lib/backend";
 import { retainBuffers, setDraftIdentity } from "@/lib/auth/drafts";
+import { termsAccepted, termsGatePath } from "@/lib/auth/terms";
 import { Button } from "@/components/ui/button";
 type State = "loading" | "signed_out" | "signed_in" | "expired" | "error";
 const AuthContext = createContext<{
@@ -181,18 +182,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-export function ProtectedRoute({ children }: { children: ReactNode }) {
+export function ProtectedRoute({
+  children,
+  requireTerms = false,
+}: {
+  children: ReactNode;
+  requireTerms?: boolean;
+}) {
   const { state, error, refresh, session } = useAuth(),
     path = usePathname(),
     router = useRouter();
   const [target, setTarget] = useState(path);
+  // Hosted accounts can be created through Google without the signup
+  // checkbox, so they accept the current Terms before reaching their data.
+  const needsTerms =
+    requireTerms &&
+    hosted &&
+    !!session &&
+    !termsAccepted(session.user.user_metadata);
   useEffect(() => {
     const url = location.pathname + location.search + location.hash;
     queueMicrotask(() => setTarget(url));
     if (state === "signed_out")
       router.replace(`/login?returnTo=${encodeURIComponent(url)}`);
-  }, [path, state, router]);
-  if (state === "signed_in" && session)
+    else if (state === "signed_in" && needsTerms)
+      router.replace(termsGatePath(url));
+  }, [path, state, router, needsTerms]);
+  if (state === "signed_in" && session && !needsTerms)
     return <div key={session.user.id}>{children}</div>;
   return (
     <main className="protected-screen">

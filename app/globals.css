@@ -196,6 +196,11 @@
   justify-content: center;
   min-height: 48px;
 }
+.auth-oauth {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}
 .auth-switch {
   text-align: center;
   margin: 16px 0;

@@ -33,7 +33,10 @@ export function safeReturnTo(value: string | null | undefined): string | null {
   const url = new URL(decoded, "https://tenantshield.invalid");
   if (
     url.origin !== "https://tenantshield.invalid" ||
-    !(url.pathname.startsWith("/case/") || url.pathname === "/account")
+    !(
+      url.pathname.startsWith("/case/") ||
+      ["/account", "/inspections", "/documents"].includes(url.pathname)
+    )
   )
     return null;
   return url.pathname + url.search + url.hash;

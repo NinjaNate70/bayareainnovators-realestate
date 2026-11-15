@@ -4,8 +4,10 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
 import { supabase as client } from '@/lib/supabase/client';
-import { PRIVACY_VERSION, TERMS_VERSION } from '@/lib/auth/terms';
+import { useRouter } from 'next/navigation';
+import { PRIVACY_VERSION, TERMS_VERSION, termsAccepted, termsGatePath } from '@/lib/auth/terms';
 import { TermsAgreementText } from '@/components/auth/terms-agreement';
+import { OAuthButton } from '@/components/auth/frame';
 import { FileDrop } from '@/components/file-drop';
 import { ComparePhotos } from './compare-photos';
 import { MoveOutAudit } from './move-out-audit';
@@ -29,7 +31,9 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function Inspections() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>();
+  const needsTerms = !!user && !termsAccepted(user.user_metadata);
 
   useEffect(() => {
     if (!client) return;
@@ -37,11 +41,16 @@ export function Inspections() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (needsTerms) router.replace(termsGatePath('/inspections'));
+  }, [needsTerms, router]);
+
   if (!client) {
     return <p className={styles.panel}>My Inspections needs a Supabase connection. See the repository setup guide.</p>;
   }
   if (user === undefined) return <p role="status">Checking your sign-in…</p>;
   if (user === null) return <SignIn supabase={client} />;
+  if (needsTerms) return <p role="status">Opening the Terms of Service…</p>;
   return <LeaseList key={user.id} supabase={client} user={user} />;
 }
 
@@ -97,6 +106,7 @@ function SignIn({ supabase }: { supabase: SupabaseClient }) {
     <section className={`${styles.panel} ${styles.signIn}`}>
       <h2>{creatingAccount ? 'Create your account' : 'Sign in'}</h2>
       <p>Use the same account on your phone and computer to see your photos on both.</p>
+      <OAuthButton returnTo="/inspections" />
       <form className={styles.form} onSubmit={submit}>
         <label>Email<input name="email" type="email" autoComplete="email" required /></label>
         <label>Password<input name="password" type="password" autoComplete={creatingAccount ? 'new-password' : 'current-password'} minLength={creatingAccount ? 8 : undefined} required /></label>

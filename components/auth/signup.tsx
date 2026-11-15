@@ -88,7 +88,7 @@ export function Signup() {
       title="A place for your case."
       description="Create an account to keep your evidence and next steps together."
     >
-      <OAuthButton />
+      <OAuthButton returnTo={search.get("returnTo")} />
       <form
         className="auth-form"
         noValidate

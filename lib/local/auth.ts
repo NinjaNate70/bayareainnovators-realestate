@@ -349,6 +349,13 @@ export const localAuth: AuthClient = {
       error: null,
     };
   },
+  signInWithGoogle: () =>
+    result(async () =>
+      fail(
+        "unsupported",
+        "Google sign-in isn't available in the local demo. Sign in with your email and password.",
+      ),
+    ),
   signOut: (options) =>
     result(async () => {
       const token = localStorage.getItem(sessionKey),
