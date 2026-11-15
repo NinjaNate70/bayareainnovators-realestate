@@ -2,7 +2,9 @@
 
 My Inspections lets renters save move-in and move-out photos by lease and room. Vercel hosts the Next.js website. Supabase Auth, Postgres, and private Storage provide the shared account and data for the phone and desktop browsers.
 
-Open **My Inspections** from the homepage to use the Supabase-backed workflow. The existing case workflow still uses browser-local accounts and data. Leave `NEXT_PUBLIC_BACKEND` unset or set to `local` for those case screens. My Inspections uses its own Supabase sign-in and runs with either of those settings. See the [case auth guide](design-system/AUTH-IMPLEMENTATION.md) for the local-case setup.
+Sign-in, cases and uploaded evidence can use the same Supabase project. Set `NEXT_PUBLIC_BACKEND=supabase` to store accounts in Supabase Auth, cases in Postgres and files in private Storage. One sign-in then covers the case screens and My Inspections. See [Connect sign-in and cases to Supabase](#connect-sign-in-and-cases-to-supabase).
+
+Leave `NEXT_PUBLIC_BACKEND` unset or set to `local` to keep the browser-only demo accounts for the case screens. My Inspections uses Supabase with either setting. See the [case auth guide](design-system/AUTH-IMPLEMENTATION.md) for the local demo setup.
 
 ## Set up Supabase
 
@@ -11,7 +13,35 @@ Open **My Inspections** from the homepage to use the Supabase-backed workflow. T
 3. In **Authentication → URL Configuration**, set **Site URL** to your production website origin, such as `https://tenant-shield.vercel.app`. Add `https://tenant-shield.vercel.app/inspections` under **Redirect URLs**, using your actual hostname. If you test sign-up on a Vercel preview, add that preview's full `/inspections` URL to the list. [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
 4. Copy the **Project URL** and **Publishable key** from the project's **Connect** dialog. [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys)
 
-The case schema and bucket setup in `supabase/schema.sql` and `supabase/storage.sql` are optional for My Inspections. If you already applied an older version of both case scripts in the same project and an inspection upload reports `permission denied for table cases`, run `grant select (id, user_id) on public.cases to authenticated;` once in the SQL Editor. The updated `storage.sql` includes this grant for fresh case setups. The cases RLS policy still restricts reads to the user who owns the case.
+## Connect sign-in and cases to Supabase
+
+1. In the Supabase **SQL Editor**, run the full [case workspace migration](supabase/migrations/20261115000100_case_workspace.sql) once. It creates the `cases` and `files` tables, the private `documents` and `photos` buckets, and policies that limit each renter to their own rows and files. You can run it again safely. It replaces the draft `supabase/schema.sql` and `supabase/storage.sql`, and also works in a project where those two were already applied.
+2. In **Authentication → URL Configuration**, set **Site URL** to your website origin and add these **Redirect URLs**, using your actual hostname. Add the same three for `http://localhost:3000` if you test locally.
+
+   ```text
+   https://tenant-shield.vercel.app/login
+   https://tenant-shield.vercel.app/reset-password
+   https://tenant-shield.vercel.app/account
+   ```
+
+   Confirmation, password-reset and email-change links return to these pages. A link to a URL that isn't listed goes to the Site URL instead.
+3. Copy [`.env.example`](.env.example) to `.env.local` and fill in the values from the Supabase **Connect** dialog. Add the same four names in **Vercel → Settings → Environment Variables**, then redeploy. `NEXT_PUBLIC_` values are fixed when the site is built, so a change needs a new build.
+
+   ```dotenv
+   NEXT_PUBLIC_BACKEND=supabase
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
+   SUPABASE_SECRET_KEY=sb_secret_YOUR_KEY
+   ```
+
+   The URL and publishable key are bundled into the website. `SUPABASE_SECRET_KEY` stays on the server and is used to delete an account at the renter's request. Never give it a `NEXT_PUBLIC_` name or commit it.
+4. Open `/signup`, create an account and follow the emailed link. You should land in a new case. Check **Authentication → Users** and **Table Editor → cases** in Supabase to see the account and the case.
+
+Supabase's built-in email sender is limited to a few messages an hour and to your project's team addresses. Set up [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp) before renters sign up with their own email. With **Confirm email** turned off, a new account is signed in immediately with no email step.
+
+Accounts and cases created with the browser-only demo backend are not copied to Supabase. Renters create a new account after the switch. Unsaved edits are still buffered in the browser under the signed-in account and are written to Supabase on the next save. The example case from the local demo account is not created for Supabase accounts.
+
+If an inspection upload reports `permission denied for table cases`, run the case workspace migration above. It grants signed-in renters access to their own cases.
 
 ## Connect Vercel
 

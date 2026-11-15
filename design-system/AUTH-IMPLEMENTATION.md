@@ -3,6 +3,22 @@
 Implemented on `feature/auth-ui`, based on the unmerged `feature/ui-ux-design`
 branch. No changes, commits or pushes target main. No PR is opened.
 
+## Supabase backend
+
+`NEXT_PUBLIC_BACKEND=supabase` selects the adapters in `lib/auth/supabase.ts`,
+`lib/db/supabase.ts` and `lib/storage/supabase.ts`, which share the browser client in
+`lib/supabase/client.ts` with My Inspections. Setup steps are in the README under
+"Connect sign-in and cases to Supabase". The rest of this guide describes the local
+demo backend, which stays the default.
+
+- Email links use Supabase's default templates. Confirmation returns to `/login`,
+  reset to `/reset-password` and email change to `/account`, each already signed in.
+- A reset link's session is held back until the new password is saved, then every
+  session ends and the renter signs in again.
+- Drafts stay in the browser (Dexie `drafts`), filed under the Supabase user id.
+- Account deletion goes through `POST /api/account/delete`, which checks the session
+  and current password, removes the renter's files, then deletes the Auth user.
+
 ## Run the demo
 
 1. Install the branch's dependencies with `npm ci`.

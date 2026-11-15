@@ -3,6 +3,7 @@ import { useId, useRef, useState } from "react";
 import { FileUp, FileText, X, LoaderCircle } from "lucide-react";
 import type { Evidence } from "@/types/case";
 import { storeFile } from "@/lib/cases";
+import { hosted } from "@/lib/backend";
 export function UploadZone({
   caseId,
   kind,
@@ -102,7 +103,9 @@ export function UploadZone({
         />
       </div>
       <p id={`${id}-hint`} className="small muted">
-        Stored in this browser. Originals are not sent to a server.
+        {hosted
+          ? "Stored privately in your account. Only you can open the originals."
+          : "Stored in this browser. Originals are not sent to a server."}
       </p>
       {busy && (
         <p role="status">

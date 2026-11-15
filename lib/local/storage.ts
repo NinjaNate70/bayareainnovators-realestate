@@ -18,7 +18,7 @@ async function authorize(path: string) {
     fail("not_found", "This file is unavailable.");
   return { row, user, caseId: parts[1] };
 }
-async function validateBlob(blob: Blob, bucket: string) {
+export async function validateBlob(blob: Blob, bucket: string) {
   if (blob.size === 0 || blob.size > 10 * 1024 * 1024)
     fail(
       "file_size",

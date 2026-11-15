@@ -16,6 +16,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { ActionBar } from "@/components/shell";
 import { SourceChip } from "@/components/evidence";
 import { estimateRecovery } from "@/lib/estimate";
+import { hosted } from "@/lib/backend";
 
 export function RepliesTab({
   data,
@@ -111,7 +112,8 @@ export function RepliesTab({
               aria-describedby="response-hint"
             />
             <p id="response-hint" className="field-hint">
-              Saved in this browser. Changing the response clears the earlier
+              Saved in {hosted ? "your account" : "this browser"}. Changing the
+              response clears the earlier
               suggestion.
             </p>
             <label

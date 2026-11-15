@@ -1,7 +1,9 @@
 # Tenant Shield Local Data and Supabase Migration Plan
 
 Approved architecture, now implemented with Dexie and the three local clients.
-Prepared SQL remains unapplied; Supabase is not connected. See
+The Supabase adapters described under "Migrating to Supabase" are implemented and
+selected by NEXT_PUBLIC_BACKEND=supabase; their SQL is
+supabase/migrations/20261115000100_case_workspace.sql. See
 AUTH-IMPLEMENTATION.md for actual adapter details, verification and setup.
 AUTH.md is the screen/flow contract. MASTER.md supplies all UI tokens.
 
@@ -32,8 +34,9 @@ Screens / provider / case view-model adapter
 ```
 
 NEXT_PUBLIC_BACKEND=local selects these adapters. NEXT_PUBLIC_BACKEND=supabase
-selects a stub that throws "not implemented" with // TODO(supabase); fail clearly,
-never silently fall back to local data. Unknown values also fail configuration.
+selects the Supabase adapters; if the project URL or publishable key is missing
+they return a clear setup error and never silently fall back to local data.
+Unknown values also fail configuration.
 The OAuth button additionally needs NEXT_PUBLIC_ENABLE_OAUTH=true AND a supported
 backend capability; its default remains false.
 

@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { hosted } from "@/lib/backend";
 export function AuthFrame({
   children,
   title,
@@ -107,7 +108,11 @@ export function TrustLine() {
         <p>
           Your documents stay private. We never share them with your landlord.
         </p>
-        <small>Local demo: your account and files stay in this browser.</small>
+        <small>
+          {hosted
+            ? "Your account and files are stored privately in your account."
+            : "Local demo: your account and files stay in this browser."}
+        </small>
       </div>
     </div>
   );

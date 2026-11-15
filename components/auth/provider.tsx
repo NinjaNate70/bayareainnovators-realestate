@@ -12,7 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoaderCircle, ShieldCheck } from "lucide-react";
 import type { Session } from "@/types/backend";
-import { getBackend } from "@/lib/backend";
+import { getBackend, hosted } from "@/lib/backend";
 import { retainBuffers, setDraftIdentity } from "@/lib/auth/drafts";
 import { Button } from "@/components/ui/button";
 type State = "loading" | "signed_out" | "signed_in" | "expired" | "error";
@@ -155,7 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDraftIdentity(null);
       setSession(null);
       setState("signed_out");
-      setNotice("You're signed out. Your saved cases remain in this browser.");
+      setNotice(
+        hosted
+          ? "You're signed out. Your saved cases are kept in your account."
+          : "You're signed out. Your saved cases remain in this browser.",
+      );
       router.push("/login");
     } finally {
       explicit.current = false;
