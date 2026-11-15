@@ -22,7 +22,7 @@ import { SourceChip, VerdictChip } from "@/components/evidence";
 import { demoCase } from "@/lib/fixtures/demo-case";
 import { money } from "@/lib/cases";
 import { useAuth } from "@/components/auth/provider";
-import { getBackend } from "@/lib/backend";
+import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import type { RentalCase } from "@/types/case";
 
@@ -210,7 +210,12 @@ export function Landing() {
             <div>
               <strong>{recent.address || "Your draft case"}</strong>
               <span className="small muted">
-                {recent.demo ? "Example case" : "Saved in this browser"} ·{" "}
+                {recent.demo
+                  ? "Example case"
+                  : hosted
+                    ? "Saved to your account"
+                    : "Saved in this browser"}{" "}
+                ·{" "}
                 {recent.audited ? "Ready to review" : "Draft in progress"} ·{" "}
                 {money(recent.deposit)} deposit
               </span>

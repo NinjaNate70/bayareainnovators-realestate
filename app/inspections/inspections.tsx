@@ -1,15 +1,13 @@
 'use client';
 
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
+import { supabase as client } from '@/lib/supabase/client';
 import { ComparePhotos } from './compare-photos';
 import { MoveOutAudit } from './move-out-audit';
 import styles from './inspections.module.css';
 
-const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const client = projectUrl && publishableKey ? createClient(projectUrl, publishableKey) : null;
 const bucket = 'inspection-photos';
 const phases = [
   { value: 'move_in', label: 'Move-in' },

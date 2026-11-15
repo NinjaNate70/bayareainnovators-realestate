@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UploadZone } from "@/components/upload-zone";
 import { freshCase, money, readCase, saveCase } from "@/lib/cases";
-import { getBackend } from "@/lib/backend";
+import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import { unwrap } from "@/lib/cases";
 import { rememberCase } from "@/lib/auth/drafts";
@@ -79,7 +79,9 @@ export function CaseWizard() {
       if (!active) return;
       try {
         await saveCase(data);
-        if (active) setSaveStatus("Draft saved in this browser");
+        if (active) setSaveStatus(
+            hosted ? "Draft saved to your account" : "Draft saved in this browser",
+          );
       } catch {
         if (active)
           setSaveStatus(
@@ -696,7 +698,9 @@ export function CaseWizard() {
                       <p>
                         {data.demo
                           ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
-                          : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
+                          : hosted
+                            ? "Your documents are stored privately in your account. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."
+                            : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>
                   </div>

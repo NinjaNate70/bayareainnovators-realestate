@@ -12,7 +12,7 @@ import {
   useAuthForm,
 } from "./form";
 import { useAuth } from "./provider";
-import { getBackend } from "@/lib/backend";
+import { backendName, getBackend } from "@/lib/backend";
 import { validEmail } from "@/lib/auth/validation";
 import { recoveryDestination } from "@/lib/auth/drafts";
 import { Button } from "@/components/ui/button";
@@ -110,7 +110,7 @@ export function Login() {
       <p className="auth-switch">
         New here? <Link href={signup}>Create an account</Link>
       </p>
-      {process.env.NODE_ENV === "development" && (
+      {process.env.NODE_ENV === "development" && backendName === "local" && (
         <DemoPanel
           onFill={(email, password) => {
             form.reset();

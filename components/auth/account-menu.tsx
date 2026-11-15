@@ -14,7 +14,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "./provider";
 import { FormError } from "./form";
-import { getBackend } from "@/lib/backend";
+import { getBackend, hosted } from "@/lib/backend";
 import { flushCases } from "@/lib/cases";
 import type { CaseRow } from "@/types/backend";
 export function AccountMenu({ compact = false }: { compact?: boolean }) {
@@ -140,8 +140,10 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
             {busy ? "Signing out…" : "Sign out"}
           </button>
           <p className="small muted">
-            Local demo: saved in this browser. Your files aren’t shared with
-            your landlord.
+            {hosted
+              ? "Saved to your account."
+              : "Local demo: saved in this browser."}{" "}
+            Your files aren’t shared with your landlord.
           </p>
         </div>
       ) : (

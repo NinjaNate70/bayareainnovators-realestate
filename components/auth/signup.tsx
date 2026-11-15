@@ -74,6 +74,8 @@ export function Signup() {
       form.responseError(r.error);
       return;
     }
+    // No email step when the backend signs the new account in immediately.
+    if (r.data?.session) return;
     router.push(`/check-email?flow=${r.data?.flow_id}`);
   }
   const login = `/login${search.get("returnTo") ? `?returnTo=${encodeURIComponent(search.get("returnTo")!)}` : ""}`;

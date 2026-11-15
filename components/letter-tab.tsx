@@ -16,6 +16,7 @@ import { SourceChip } from "@/components/evidence";
 import { CountdownBadge } from "@/components/owed-card";
 import { estimateRecovery } from "@/lib/estimate";
 import { money } from "@/lib/cases";
+import { hosted } from "@/lib/backend";
 
 export function LetterTab({
   data,
@@ -129,7 +130,9 @@ export function LetterTab({
                 }}
               />
               <div className="split-row wrap small muted">
-                <span>Editable · stored in this browser</span>
+                <span>
+                  Editable · stored in {hosted ? "your account" : "this browser"}
+                </span>
                 <span>
                   {data.letter.split(/\s+/).filter(Boolean).length} words
                 </span>

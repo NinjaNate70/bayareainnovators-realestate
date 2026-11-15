@@ -11,7 +11,7 @@ import {
   Mail,
 } from "lucide-react";
 import type { AuthFlow, OutboxMessage } from "@/types/backend";
-import { getBackend } from "@/lib/backend";
+import { backendName, getBackend } from "@/lib/backend";
 import { recoveryDestination } from "@/lib/auth/drafts";
 import { Button } from "@/components/ui/button";
 import { AuthFrame } from "./frame";
@@ -217,7 +217,9 @@ export function EmailConfirmation({
           </div>
         </div>
       )}
-      {process.env.NODE_ENV === "development" && <DevOutbox flowId={flowId} />}
+      {process.env.NODE_ENV === "development" && backendName === "local" && (
+        <DevOutbox flowId={flowId} />
+      )}
     </AuthFrame>
   );
 }

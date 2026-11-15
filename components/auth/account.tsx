@@ -11,7 +11,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { getBackend } from "@/lib/backend";
+import { getBackend, hosted } from "@/lib/backend";
 import { passwordError, validEmail } from "@/lib/auth/validation";
 import { flushCases } from "@/lib/cases";
 import { Shell } from "@/components/shell";
@@ -115,15 +115,20 @@ export function AccountSettings() {
             <div className="auth-status-icon">
               <UserRound aria-hidden="true" />
             </div>
-            <h2 style={{ marginTop: 16 }}>Your local account</h2>
+            <h2 style={{ marginTop: 16 }}>
+              {hosted ? "Your account" : "Your local account"}
+            </h2>
             <p className="small muted">
-              Your account and original documents stay in this browser. They
-              won’t sync to another device in this demo.
+              {hosted
+                ? "Your cases and original documents are saved to your account. Sign in on another device to pick up where you left off."
+                : "Your account and original documents stay in this browser. They won’t sync to another device in this demo."}
             </p>
-            <p className="small muted">
-              Local sign-in is for development and demonstrations. It isn’t
-              production account security.
-            </p>
+            {!hosted && (
+              <p className="small muted">
+                Local sign-in is for development and demonstrations. It isn’t
+                production account security.
+              </p>
+            )}
             <TrustLine />
           </Card>
           <LegacyImport />
@@ -403,7 +408,9 @@ function DeleteAccount() {
     }
     setOpen(false);
     notify(
-      "Your account and all its case data have been deleted from this browser.",
+      hosted
+        ? "Your account and all its case data have been deleted."
+        : "Your account and all its case data have been deleted from this browser.",
     );
     router.replace("/login?accountDeleted=1");
   }
@@ -412,7 +419,7 @@ function DeleteAccount() {
       <h2>Delete account</h2>
       <p className="small muted">
         Permanently remove this account and all its case details, drafts and
-        original files from this browser.
+        original files{hosted ? "" : " from this browser"}.
       </p>
       <Sheet
         title="Delete your account?"
@@ -440,7 +447,8 @@ function DeleteAccount() {
           <FormError message={form.error} />
           <p>
             All your cases, uploaded documents, photos, letters and drafts will
-            be removed. Other accounts in this browser are unaffected.
+            be removed.
+            {hosted ? "" : " Other accounts in this browser are unaffected."}
           </p>
           <PasswordField
             label="Current password"
