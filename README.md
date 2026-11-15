@@ -102,15 +102,19 @@ It uses the same keys as the audit (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`), read
 
 With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same keys as the case assistant.
 
-1. A **document reader** (Claude) reads the deduction letter and lease: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, and lease terms about the deposit. If Claude is unavailable, Gemini reads them.
+1. A **document reader** (Claude) reads the deduction letter, the lease and any supporting documents the renter added: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, lease terms about the deposit, and what each supporting document shows for or against a charge. If Claude is unavailable, Gemini reads them.
 2. A **photo analyst** (Gemini) looks at the move-in and move-out photos and reports what is visible for each charge. Steps 1 and 2 run together.
 3. An **auditor** (Gemini) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide.
 
 Each charge gets a status (Fair, Disputable, Likely not allowed, or Need more info), a plain explanation, the evidence files and guide sections behind it, and a list of what to add or check. The app then checks the auditor's answer in code. A finding with no evidence file behind it, or a finding against the landlord with no guide section, is changed to **Need more info**. The dollar range in **You may be owed** comes from the charge amounts: a disputable charge counts from $0 up to its amount, and a likely-not-allowed charge counts in full. The models never supply an amount.
 
+### Adding more documents
+
+The wizard's first step has a third upload area, **More documents that help your case**, for receipts, a move-in checklist, emails or texts with the landlord, repair invoices and the like. On a saved case, **Add more documents** on the Audit and Letter tabs opens that step. New files mark the case as needing review, and the next **Run audit** reads them with everything else. A finding may cite a supporting document only if the document reader actually read it.
+
 Limits to know about:
 
-- One audit reviews up to 4 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
+- One audit reviews up to 10 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
 - Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
 - The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
 - If `GEMINI_API_KEY` is missing, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.

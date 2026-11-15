@@ -6,7 +6,9 @@ export interface Evidence {
   bucket?: "documents" | "photos";
   id: string;
   name: string;
-  kind: "letter" | "lease" | "before" | "after";
+  // "other" is any further document that supports the case: receipts, a
+  // move-in checklist, messages with the landlord, invoices.
+  kind: "letter" | "lease" | "other" | "before" | "after";
   type: string;
   size: number;
   url?: string;
