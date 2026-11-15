@@ -27,7 +27,7 @@ export function PhotosTab({
   const [chargeIndex, setChargeIndex] = useState(0);
   const [adding, setAdding] = useState(false);
   const [marks, setMarks] = useState(false);
-  // AI comparison of the chosen pair: which charge is being compared, the
+  // Comparison of the chosen pair: which charge is being compared, the
   // last error, whether the changes are outlined, and the move-out photo size.
   const [comparing, setComparing] = useState<string | null>(null);
   const [compareError, setCompareError] = useState("");
@@ -322,7 +322,7 @@ export function PhotosTab({
                 <ScanSearch size={24} aria-hidden="true" />
               </span>
               <div>
-                <p className="eyebrow">AI PHOTO COMPARISON</p>
+                <p className="eyebrow">PHOTO COMPARISON</p>
                 {analysis ? (
                   <ComparisonResult
                     analysis={analysis}
@@ -338,7 +338,7 @@ export function PhotosTab({
                       {!before || !after
                         ? "Choose a move-in and a move-out photo of the same spot for this charge, then compare them."
                         : canCompare
-                          ? "Claude compares these two photos for this charge, lists each visible difference, and marks where it is on the move-out photo. Your original photos aren’t changed."
+                          ? "The comparison lists visible differences and marks their locations on the move-out photo."
                           : "Photo analysis runs in the hosted app with a signed-in account. No conclusion or repair estimate is shown here."}
                     </p>
                   </>
@@ -388,8 +388,7 @@ export function PhotosTab({
                 )}
                 {canCompare && !analysis && before && after && (
                   <p className="small muted">
-                    The two photos are sent to Anthropic (or Google, if Claude is
-                    unavailable) for analysis.
+                    The two photos are sent to an external service for comparison.
                   </p>
                 )}
               </div>

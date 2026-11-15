@@ -23,6 +23,12 @@ export default function Privacy() {
             files.
           </p>
           <p>
+            When you use document reading, photo comparison, case audits, or the
+            assistant, the information needed for that feature is
+            sent to an external service. The feature tells you which information
+            it sends before you use it.
+          </p>
+          <p>
             Unsaved edits are kept in this browser until they are saved to your
             account. Deleting your account from the account page removes its
             cases, files and sign-in. The team must review the privacy promise

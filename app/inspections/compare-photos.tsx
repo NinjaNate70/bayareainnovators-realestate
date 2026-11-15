@@ -13,7 +13,7 @@ type ComparisonProps = {
   autoCompare: boolean;
   renderPhoto: (id: string) => ReactNode;
 };
-type StoredComparison = SavedComparison & { analyzedWithClaude: boolean };
+type StoredComparison = SavedComparison & { hasCurrentAssessment: boolean };
 
 const labels = {
   no_damage: 'No new visible damage',
@@ -99,7 +99,7 @@ function PairAssessment({ supabase, roomId, roomName, moveInId, moveOutId, autoC
       .abortSignal(controller.signal).maybeSingle<SavedComparison & { model: string }>().then(({ data, error }) => {
         if (controller.signal.aborted) return;
         setHistoryError(Boolean(error));
-        setResult(data ? { ...data, analyzedWithClaude: data.model.startsWith('claude-') } : null);
+        setResult(data ? { ...data, hasCurrentAssessment: data.model.startsWith('claude-') } : null);
       });
     return () => controller.abort();
   }, [supabase, roomId, moveInId, moveOutId]);
@@ -110,7 +110,7 @@ function PairAssessment({ supabase, roomId, roomName, moveInId, moveOutId, autoC
     setError('');
     try {
       const saved = await requestComparison(supabase, moveInId, moveOutId, roomName);
-      setResult({ ...saved, analyzedWithClaude: true });
+      setResult({ ...saved, hasCurrentAssessment: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not compare the photos.');
     } finally {
@@ -132,11 +132,11 @@ function PairAssessment({ supabase, roomId, roomName, moveInId, moveOutId, autoC
       {result === undefined && <p role="status">Loading comparison…</p>}
       {busy && <p role="status">Comparing photos…</p>}
       {error && <p className={styles.error} role="alert">{error}</p>}
-      {result !== undefined && !result?.analyzedWithClaude && !busy && (
+      {result !== undefined && !result?.hasCurrentAssessment && !busy && (
         <>
-          <p id={disclosureId} className={styles.comparisonNote}>Sends these two photos to Claude for analysis.</p>
+          <p id={disclosureId} className={styles.comparisonNote}>Sends these two photos to an external service for comparison.</p>
           <button type="button" className={styles.secondary} aria-describedby={disclosureId} onClick={() => void compare()}>
-            {error ? 'Retry comparison' : 'Compare with Claude'}
+            {error ? 'Retry comparison' : 'Compare photos'}
           </button>
         </>
       )}
@@ -145,7 +145,7 @@ function PairAssessment({ supabase, roomId, roomName, moveInId, moveOutId, autoC
           <p><strong>{result.category ? labels[result.category] : 'Needs review'}</strong></p>
           {result.summary.split('\n').map((line, index) => {
             const split = line.indexOf(': ');
-            return result.analyzedWithClaude && split > 0
+            return result.hasCurrentAssessment && split > 0
               ? <p key={index}><strong>{line.slice(0, split)}</strong> {line.slice(split + 2)}</p>
               : <p key={index}>{line}</p>;
           })}

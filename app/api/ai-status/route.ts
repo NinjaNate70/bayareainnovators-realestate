@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !publishableKey) return respond('Supabase isn’t connected on this deployment.', 503);
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
-  if (!accessToken) return respond('Sign in to check the AI connection.', 401);
+  if (!accessToken) return respond('Sign in to check the connection.', 401);
   const renter = createClient(url, publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });

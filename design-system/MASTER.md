@@ -46,7 +46,7 @@ demand letter -> prepare a response. Move-out, California, tenant side only.
 Use plain, calm language: "Here is why this charge may be disputed", "Add a receipt
 to clarify this charge", "You may be owed". Fair charges remain visible. Avoid
 "illegal", "guaranteed refund", adversarial landlord language, invented social
-proof, unverified security badges, and claims that AI alone establishes a fact.
+proof, unverified security badges, and claims that an automated finding alone establishes a fact.
 Persistent supporting copy: "Information to help you understand your deposit.
 Not legal advice." Do not let it compete with the case action.
 
@@ -109,7 +109,7 @@ are distinguished from evidence dates.
 A claimed conclusion unsupported by a rule ID or photo ID cannot be displayed as
 a conclusion: show Need more info and state what is missing. A photo does not
 by itself substantiate a legal claim. Never invent a citation to satisfy the UI.
-Display AI rationale separately from user-confirmed extracted facts.
+Display the analysis rationale separately from user-confirmed extracted facts.
 "Fair" items do not contribute to disputed recovery estimates.
 
 ## Type, spacing, shape, depth
@@ -253,7 +253,7 @@ copy/export. Editing evidence invalidates dependent analysis visibly.
 ## Skill anti-patterns applied to this product
 
 Generator flags: playful design, unclear fees, outdated design, hidden credentials,
-and AI purple/pink gradients. Application: sober navigation and evidence; disclose
+and purple/pink gradients. Application: sober navigation and evidence; disclose
 actual pricing before any payment; no unsupported badges/certifications; no gamified
 recovery promise. No payment flow is introduced in Phase 1.
 
@@ -339,7 +339,7 @@ Clear focus rings (3-4px), ARIA labels, skip links, responsive design, reduced m
 ### Avoid (Anti-patterns)
 - Outdated design
 - Hidden credentials
-- AI purple/pink gradients
+- purple/pink gradients
 
 ### Pre-Delivery Checklist
 - [ ] No emojis as icons (use SVG: Heroicons/Lucide)

@@ -1,6 +1,6 @@
 # RenterShield Team Development Rules
 
-We are building a Next.js, TypeScript, Supabase, and OpenAI web application for a 24-hour hackathon.
+We are building a Next.js, TypeScript, and Supabase web application for a 24-hour hackathon.
 
 - Follow the existing application architecture.
 - Reuse shared TypeScript interfaces in the `types/` directory.

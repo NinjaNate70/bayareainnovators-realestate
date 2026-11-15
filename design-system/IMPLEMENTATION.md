@@ -26,7 +26,7 @@ date is separate from the labeled demo accounting-deadline example.
 
 This is a frontend MVP. Real uploads are retained as originals in IndexedDB, with
 case metadata and edits in localStorage in the same browser. Clearing browser site
-data removes that local persistence. Uploaded content is not sent to an AI service.
+data removes that local persistence. Uploaded content is not sent to an external analysis service.
 Real cases get Need more info instead of inheriting fixture verdicts or estimates.
 Edits to evidence mark the audit for review and suppress its earlier conclusions.
 

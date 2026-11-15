@@ -82,10 +82,9 @@ export function ComparisonResult({
         </p>
       )}
       <p className="small muted">
-        Compared by {analysis.by === "claude" ? "Claude" : "Gemini"} on{" "}
-        {new Date(analysis.checkedAt).toLocaleString()}. An AI description of
-        what is visible: it doesn’t decide who caused a change, whether the
-        charge is allowed, or what a repair costs. Marked areas are approximate.
+        Compared on {new Date(analysis.checkedAt).toLocaleString()}. Verify the findings
+        against the original photos. Marked areas are approximate. Use other
+        evidence to assess responsibility, whether the charge is allowed, and the cost.
       </p>
     </div>
   );

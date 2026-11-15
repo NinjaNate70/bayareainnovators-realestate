@@ -297,9 +297,9 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
             <label className={styles.comparisonConsent}>
               <input type="checkbox" checked={autoCompare} onChange={(event) => changeAutoCompare(event.target.checked)}
                 aria-describedby="auto-comparison-description" />
-              <span>Automatically compare photos with Claude</span>
+              <span>Automatically compare photos</span>
             </label>
-            <p id="auto-comparison-description" className={styles.comparisonNote}>Sends the newest move-in and move-out photos in each room to Claude.</p>
+            <p id="auto-comparison-description" className={styles.comparisonNote}>Sends the newest move-in and move-out photos in each room to an external service for comparison.</p>
           </>
         )}
         {!loaded && <p role="status">Loading photos…</p>}

@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 type Reply = {
   reply: string;
   agent_label: string;
-  reviewed_by: "claude" | "gemini";
   revised: boolean;
   sources: { id: string; title: string }[];
 };
@@ -27,8 +26,7 @@ const suggestions = [
   "How does my situation affect my case?",
 ];
 
-// A chat panel on the case screens. Each answer comes from one specialist
-// agent and is checked by a reviewer agent before it is shown.
+// The assistant drafts and checks an answer before showing it.
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function CaseAssistant({
   caseId,
@@ -120,9 +118,9 @@ export function CaseAssistant({
     >
       <div className="assistant">
         <p className="small muted">
-          Our system reads your question and this case’s details to prepare
-          an answer. Rules come from the California Courts
-          Self-Help Guide.
+          Your question, conversation, and saved case details are sent to an
+          external service to prepare an answer. Rules come from the California
+          Courts Self-Help Guide.
         </p>
         <div className="assistant-log" role="log" aria-live="polite">
           {messages.length === 0 && (
@@ -195,34 +193,26 @@ export function CaseAssistant({
             <span className="sr-only">Send</span>
           </Button>
         </form>
-        {showAiStatus && <AiCheck />}
+        {showConnectionStatus && <ConnectionCheck />}
       </div>
     </Sheet>
   );
 }
 
-// The AI connection check is for the team, not renters: it names the AI
-// services. It shows in development, or when NEXT_PUBLIC_SHOW_AI_STATUS=true.
-const showAiStatus =
+// The team can enable the connection check outside development.
+const showConnectionStatus =
   process.env.NODE_ENV === "development" ||
   process.env.NEXT_PUBLIC_SHOW_AI_STATUS === "true";
 
 type ServiceStatus = {
   service: string;
-  used_for: string;
   key_set: boolean;
-  model: string;
   ok: boolean;
   answered_in_ms: number | null;
-  problem: string;
-  fix: string;
-  available_models: string[];
   optional?: boolean;
-  note?: string;
 };
 
-// Tests the site's AI keys and models and shows what, if anything, is wrong.
-function AiCheck() {
+function ConnectionCheck() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [services, setServices] = useState<ServiceStatus[] | null>(null);
@@ -263,7 +253,7 @@ function AiCheck() {
         disabled={busy}
         onClick={() => void check()}
       >
-        {busy ? "Checking the AI services…" : "Not getting answers? Check the AI connection"}
+        {busy ? "Checking the connection…" : "Not getting answers? Check the connection"}
       </button>
       {error && (
         <p className="notice" role="alert">
@@ -275,34 +265,22 @@ function AiCheck() {
           {services.map((item) => (
             <li key={item.service}>
               <strong>
-                {item.service}:{" "}
+                {item.optional ? "Backup service" : "Primary service"}:{" "}
                 {item.ok
                   ? "working"
                   : item.optional && !item.key_set
                     ? "not set (optional)"
                     : "not working"}
               </strong>
-              <span className="assistant-meta">
-                Model {item.model} · {item.used_for}
-              </span>
               {item.ok ? (
-                <>
-                  <span>
-                    Answered a test in{" "}
-                    {((item.answered_in_ms ?? 0) / 1000).toFixed(1)} seconds.
-                  </span>
-                  {item.note && <span>{item.note}</span>}
-                </>
+                <span>
+                  Answered a test in{" "}
+                  {((item.answered_in_ms ?? 0) / 1000).toFixed(1)} seconds.
+                </span>
               ) : (
-                <>
-                  <span>{item.problem}</span>
-                  <span>{item.fix}</span>
-                  {item.available_models.length > 0 && (
-                    <span className="assistant-meta">
-                      Available to this key: {item.available_models.join(", ")}
-                    </span>
-                  )}
-                </>
+                item.optional && !item.key_set ? null : (
+                  <span>Try again shortly. If it still fails, ask the project admin to check the service setup.</span>
+                )
               )}
             </li>
           ))}

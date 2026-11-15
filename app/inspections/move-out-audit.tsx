@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { auditRoomColumns, summarizeAudit, type AuditRoom, type AuditStatus } from '@/lib/move-out-audit';
+import { neutralService } from '@/lib/neutral-copy';
 import styles from './inspections.module.css';
 
 type Photo = { id: string; phase: 'move_in' | 'move_out'; original_name: string; uploaded_at: string };
@@ -121,7 +122,7 @@ export function MoveOutAudit({ supabase, leaseId, rooms, renderPhoto, refreshPho
         <>
           <p role="status"><strong>{totals.completed} of {totals.total} rooms reviewed</strong> · {totals.working} in progress · {totals.needsAttention} need attention</p>
           {rooms.length > jobs.length && <p>This audit covers the rooms that existed when it started. You can use Compare photos in rooms added later.</p>}
-          <p className={styles.comparisonNote}>AI findings are based on visible evidence. Open the photos to verify them.</p>
+          <p className={styles.comparisonNote}>Findings are based on visible evidence. Open the photos to verify them.</p>
           {rooms.map((room) => {
             const job = jobs.find((item) => item.room_id === room.id);
             return job && <RoomReview key={`${job.id}:${job.status}`} job={job} room={room} supabase={supabase} refresh={refresh}
@@ -150,7 +151,7 @@ function StartAudit({ supabase, leaseId, rooms, refresh, renderPhoto }: {
     const { error } = await supabase.rpc('start_move_out_audit', {
       p_lease: leaseId, p_pairs: rooms.map(({ id }) => pairFrom(data, id)), p_consent: consent,
     });
-    if (error) setError(error.message);
+    if (error) setError(neutralService(error.message));
     else await refresh();
     setBusy(false);
   }
@@ -173,7 +174,7 @@ function Consent({ checked, setChecked }: { checked: boolean; setChecked: (value
   return (
     <label className={styles.comparisonConsent}>
       <input type="checkbox" required checked={checked} onChange={(event) => setChecked(event.target.checked)} />
-      <span>I checked the selected pairs and agree to let our system analyze these photos.</span>
+      <span>I checked that each pair shows the same spot and agree to send the photos to an external service for comparison.</span>
     </label>
   );
 }
@@ -202,7 +203,7 @@ function RoomReview({ job, room, supabase, refresh, refreshPhotos, renderPhoto, 
     setBusy(true);
     setError('');
     const result = await supabase.rpc('resume_move_out_audit_room', { p_job: job.id, p_before: pair.before_id, p_after: pair.after_id, p_consent: consent });
-    if (result.error || !result.data) setError(result.error?.message ?? 'This room changed. Refresh the audit and try again.');
+    if (result.error || !result.data) setError(neutralService(result.error?.message ?? 'This room changed. Refresh the audit and try again.'));
     else await refresh();
     setBusy(false);
   }

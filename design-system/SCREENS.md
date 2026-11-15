@@ -26,7 +26,7 @@ Every empty/loading/error spec below inherits a stable shell and a visible escap
 path. Analysis statuses describe real work; show indeterminate feedback without a
 fake percent. A timed-out operation shows Retry with retained inputs. Failed
 read requests retain the last loaded content with a stale-data label. Distinguish
-route fetch skeletons from AI analysis. Fixture mode visibly says "Demo case".
+route fetch skeletons from analysis. Fixture mode visibly says "Demo case".
 
 ## 1. Landing — /
 
@@ -73,7 +73,7 @@ States:
 - Empty: first visit is the populated explanatory landing; no empty dashboard.
   Resume area says "Your first case starts here" when there is no case.
 - Loading: reserve resume card space while retrieving draft; static explanation
-  and Start remain usable. AI analysis is never initiated from the landing.
+  and Start remain usable. Analysis is never initiated from the landing.
 - Error: "We couldn't load your saved case. Try again." Retry in resume area;
   Start and demo remain available. Do not imply the case was deleted.
 
@@ -224,7 +224,7 @@ MOBILE                           DESKTOP
 States:
 - Empty: incomplete recap identifies missing step; action Return to details.
   A case with no charges/evidence cannot produce a completed audit.
-- Loading/AI: on submit replace review body with reserved results structure and
+- Loading: on submit replace review body with reserved results structure and
   "Analyzing your evidence"; phases Reading charges / Checking cited rules /
   Comparing available photos / Preparing summary, updated only by actual state.
   Disable duplicate submit; allow safe Home with case status preserved. On
@@ -292,7 +292,7 @@ States:
 - Empty: case exists but unaudited -> "Your evidence is ready. Run an audit."
   No cases/not found -> explanation and Start case/Home. Zero filter matches ->
   Clear filters. Zero disputed amount -> no range, evidence summary.
-- Loading/AI: skeleton owed area WITHOUT amount; phase status and progress
+- Loading: skeleton owed area WITHOUT amount; phase status and progress
   indicators with actual information only. Reserve charge list height. If rerun,
   mark old estimate out of date; do not present it as the new result.
 - Error: failed audit -> retained case and Retry audit. Failure loading source
@@ -304,7 +304,7 @@ States:
 Spec: charge/room filter, labeled before/after pairs, evidence IDs and captions.
 Side-by-side where space permits; vertically stacked on narrow screens. Explicit
 Previous/Next buttons and Pair selector. Optional compare slider cannot be the
-only inspection method. AI observations use three labels: No visible change,
+only inspection method. Comparison findings use three labels: No visible change,
 Possible ordinary wear, Possible repair; uncertainty remains explicit and each
 observation cites the pair. Cost estimate only if sourced, otherwise unavailable.
 Primary Add photos opens case evidence editor using the wizard photo controls;
@@ -343,7 +343,7 @@ Desktop:
 States:
 - Empty: "No photos added. Your document audit is still available." Add photos.
   A one-sided pair labels "Move-in photo missing", never duplicates the after photo.
-- Loading/AI: stable image aspect-ratio and "Comparing this pair" status for a
+- Loading: stable image aspect-ratio and "Comparing this pair" status for a
   real comparison; photos can still be inspected. No synthesized difference.
 - Error: image retry/reselect; comparison failure says analysis unavailable while
   originals remain viewable. Missing sources remove the observation claim.
@@ -393,7 +393,7 @@ Desktop:
 States:
 - Empty: "Create a draft from the charges you reviewed" with included charges and
   Generate draft. Audit missing -> Review audit action; no guaranteed outcome.
-- Loading/AI: "Preparing a draft using your selected charges" status with reserved
+- Loading: "Preparing a draft using your selected charges" status with reserved
   editor; do not overwrite existing edits until user chooses Replace draft.
 - Error: generation retry retains previous draft and edits; failed export offers
   Retry export / Copy text. Save failure keeps editor content and shows unsaved
@@ -441,7 +441,7 @@ Desktop:
 States:
 - Empty: "When your landlord responds, add their message here." Paste or upload;
   Prepare reply explains why response text is needed. No fake conversation.
-- Loading/AI: "Preparing a reply from this response and your case evidence";
+- Loading: "Preparing a reply from this response and your case evidence";
   retain incoming text, prevent duplicate generation, allow reviewing sources.
 - Error: extraction or generation retry preserves incoming response and edited
   reply. Unsupported claims become Need more info prompts; never invent legal

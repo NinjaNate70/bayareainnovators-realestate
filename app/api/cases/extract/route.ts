@@ -29,7 +29,7 @@ function allow(userId: string) {
 
 // Names the service and status only, never keys or provider response text.
 function failure(error: unknown) {
-  if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
+  if (error instanceof Error && error.name === 'TimeoutError') return 'the document reading service took too long';
   const message = error instanceof Error ? error.message : '';
   if (error instanceof Error && error.name === 'AiServiceError') return message.slice(0, -1);
   return /^(Gemini|Claude) (request failed \(\d{3}\)|did not return a complete \w+|declined the request|could not be reached)\.$/.test(message)

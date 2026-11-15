@@ -30,7 +30,7 @@ const caseColumns = '*';
 // Names the service and status only (for example "Gemini request failed (404)"),
 // so a setup problem can be told apart from a slow answer. Never includes keys.
 function failure(error: unknown) {
-  if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
+  if (error instanceof Error && error.name === 'TimeoutError') return 'the assistant took too long';
   const message = error instanceof Error ? error.message : '';
   // Raised when a service and its stand-in both failed; it names each one.
   if (error instanceof Error && error.name === 'AiServiceError') return message.slice(0, -1);

@@ -65,30 +65,21 @@ If an inspection upload reports `permission denied for table cases`, run the cas
 
 Uploads go directly to Supabase. The app keeps the original file and supports JPEG, PNG, WebP, HEIC and HEIF up to 20 MB each. The gallery tries to create a JPEG preview in the browser when it cannot display an HEIC or HEIF original. You can download the original even if preview generation fails. If a connection drops, retry **Upload photo** with the same file, room, and phase while the form is open.
 
-## Compare inspection photos with Claude
+## Compare inspection photos
 
 1. Run the [comparison migration](supabase/migrations/20261114000200_inspection_comparisons.sql) in the Supabase SQL Editor after the inspection migration. It creates `inspection_comparisons` and `repair_price_bands`. Renters can read their own completed comparisons. The Vercel API writes comparison results after verifying the renter's session and ownership of both photo records.
-2. Create an API key in the [Claude Console](https://platform.claude.com/).
-3. Set these variables in the appropriate Vercel environment and redeploy.
+2. Set the primary service credentials listed in [.env.example](.env.example), along with the `SUPABASE_SECRET_KEY` for the same Supabase project. Keep these values on the server and redeploy after setting them.
+3. Open **My Inspections** and upload a move-in and move-out photo of the same spot to the same room. Select **Compare photos** to send the pair to an external service for comparison. Enable **Automatically compare photos** to send the newest pair in each room whenever both phases have photos. This choice is saved for your account in the current browser. Use the photo menus to compare a different pair when a phase has multiple photos. The saved result explains whether the views match, what each photo shows, what changed, and what to do next.
 
-   | Variable | Value |
-   |---|---|
-   | `ANTHROPIC_API_KEY` | The Claude API key already used by the case audit |
-   | `SUPABASE_SECRET_KEY` | The `sb_secret_` key from **Supabase → Settings → API Keys** for the same project as your project URL |
-   | `ANTHROPIC_MODEL` (optional) | The same Claude model override used by the case audit |
-
-   Keep both keys server-side. Their names have no `NEXT_PUBLIC_` prefix. Keep the two existing `NEXT_PUBLIC_SUPABASE_` variables. [Vercel environment variables](https://vercel.com/docs/environment-variables)
-4. Open **My Inspections** and upload a move-in and move-out photo of the same spot to the same room. Select **Compare with Claude** to send the pair for analysis. Enable **Automatically compare photos with Claude** to send the newest pair in each room whenever both phases have photos. This choice is saved for your account in the current browser. Use the photo menus to compare a different pair when a phase has multiple photos. The saved result explains whether the views match, what each photo shows, what changed, and what to do next.
-
-The app reuses the saved Claude result for the same two photo IDs. Existing comparisons from the previous provider can be rerun with Claude by selecting the same photos. The app prepares smaller image copies for analysis and keeps the private originals in Supabase. If the server cannot decode a photo, upload a JPEG, PNG, or WebP copy for comparison.
+The app reuses a current comparison for the same two photo IDs. To refresh an older comparison, select the same photos again. The app prepares smaller image copies for analysis and keeps the private originals in Supabase. If the server cannot decode a photo, upload a JPEG, PNG, or WebP copy for comparison.
 
 ## Fill in charges from the deduction letter
 
-With `NEXT_PUBLIC_BACKEND=supabase`, the renter no longer types the itemized charges. After they upload the landlord's letter and choose **Continue**, the server sends the letter (and the lease, if there is one) to Claude, or to Gemini if Claude is unavailable, and copies out each charge with its amount, plus the address, names, move-out date, letter date, deposit and refund where the documents state them.
+With `NEXT_PUBLIC_BACKEND=supabase`, the renter no longer types the itemized charges. After they upload the landlord's letter and choose **Continue**, the server sends the letter (and the lease, if there is one) to an external service to copy out each charge with its amount, plus the address, names, move-out date, letter date, deposit and refund where the documents state them.
 
 The wizard then opens the Details step with those filled in and asks the renter to check each one against the letter. Everything stays editable. Details the renter already entered are kept, and **Read the letter again** replaces the charge list on request. The reader only transcribes; it leaves out totals and anything it can't read, and never judges a charge. If it can't read the letter, the renter enters the charges by hand as before, and **No letter / enter manually** skips reading altogether.
 
-It uses the same key as the audit (`ANTHROPIC_API_KEY`, with `GEMINI_API_KEY` as an optional stand-in), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
+It reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
 
 ## My documents
 
@@ -111,13 +102,13 @@ The audit and the case assistant read the notes as the renter's own account. The
 
 With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same key as the case assistant.
 
-1. **Document readers** (Claude) read the deduction letter and lease in one request and the supporting documents two at a time in others: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, lease terms about the deposit, and what each supporting document shows for or against a charge.
-2. A **photo analyst** (Claude) looks at the move-in and move-out photos and reports what is visible for each charge. Every reader in steps 1 and 2 runs at the same time, and the server fetches the files together, so adding documents does not add to the wait.
-3. An **auditor** (Claude) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide. It is given deeper thinking than the readers whenever at least 26 seconds remain of the server's minute.
+1. The document review reads the deduction letter and lease in one request and the supporting documents two at a time in others: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, lease terms about the deposit, and what each supporting document shows for or against a charge.
+2. The photo review checks the move-in and move-out photos and reports what is visible for each charge. Every reader in steps 1 and 2 runs at the same time, and the server fetches the files together, so adding documents does not add to the wait.
+3. The audit weighs each charge against those findings, saved comparisons from My Inspections, and the California Courts guide.
 
-Claude does every step, so the audit needs only `ANTHROPIC_API_KEY`. If `GEMINI_API_KEY` is also set, Gemini stands in for any single step that Claude fails.
+Set the primary service credentials in [.env.example](.env.example). You can also configure a backup service.
 
-Each charge gets a status (Fair, Disputable, Likely not allowed, or Need more info), a plain explanation, the evidence files and guide sections behind it, and a list of what to add or check. The app then checks the auditor's answer in code. A finding with no evidence file behind it, or a finding against the landlord with no guide section, is changed to **Need more info**. The dollar range in **You may be owed** comes from the charge amounts: a disputable charge counts from $0 up to its amount, and a likely-not-allowed charge counts in full. The models never supply an amount.
+Each charge gets a status (Fair, Disputable, Likely not allowed, or Need more info), a plain explanation, the evidence files and guide sections behind it, and a list of what to add or check. The app then checks the auditor's answer in code. A finding with no evidence file behind it, or a finding against the landlord with no guide section, is changed to **Need more info**. The dollar range in **You may be owed** comes from the charge amounts: a disputable charge counts from $0 up to its amount, and a likely-not-allowed charge counts in full.
 
 ### Adding more documents
 
@@ -128,51 +119,40 @@ Limits to know about:
 - One audit reviews up to 10 documents and 8 photos, with a separate 12 MiB budget for each. The photo budget counts the JPEG copies resized for analysis to a maximum of 1,568 pixels on the long edge. Supabase keeps the originals. The charge's request list names files left out of the audit.
 - Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
 - The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
-- If neither `ANTHROPIC_API_KEY` nor `GEMINI_API_KEY` is set, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
-- The letter, lease, other documents, photos and case details are sent to Anthropic (Claude), and to Google only if Gemini stands in. The Review step says so before the renter runs it.
+- If neither service is configured, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
+- The audit sends the letter, lease, other documents, photos, and case details to an external service. The Review step explains this before the renter runs it.
 
 The result is information to help a renter organise their case, not legal advice.
 
 ## Enable the case assistant
 
-The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents:
+The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer is drafted and checked in two steps.
 
-1. A **specialist** (Claude) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
-2. A **reviewer** (Claude, in a separate request that sees only the draft, the case facts and the guide) checks it. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+1. The assistant drafts an answer based on the question: how to proceed, what evidence to collect, how the deposit rules apply, or what to include in a letter.
+2. A separate review checks the draft against the case facts and the guide. The assistant shows the answer only after that review.
 
-The assistant needs only `ANTHROPIC_API_KEY`. If `GEMINI_API_KEY` is also set, Gemini stands in for a step that Claude fails, so one provider having a bad moment doesn't stop the audit or the assistant.
+Set the primary service credentials in [.env.example](.env.example). You can also configure a backup service.
 
 ### Fast mode
 
-Every Claude request the app makes (reading documents and photos, the audit, the letter reader and the assistant) asks for fast mode when the model offers it without a beta: `claude-opus-5-5`, `claude-fable-5-2` and `claude-mythos-5-2`. Fast mode speeds up how quickly the answer is written. It does not shorten uploads or the time Claude spends taking in a long document. It bills at a premium, so expect the Claude part of the bill to roughly double.
-
-If a fast request is turned away (fast mode has its own rate limit and capacity), the same request is sent once more at standard speed, as long as time remains. **Check the AI connection** reports whether fast mode is actually in use for your key. Set `ANTHROPIC_FAST_MODE=off` to go back to standard speed and price.
+The primary service requests fast mode where supported. Fast mode speeds up response writing and can raise costs. If fast mode is unavailable, the request can retry at standard speed. Use the speed setting in [.env.example](.env.example) to select standard speed and pricing.
 
 ### If answers don't come through
 
-Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and Claude: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
+In development, open the assistant and choose **Not getting answers? Check the connection**. The panel shows whether the primary and optional backup services answer and how long each took. The team can enable the panel on a deployment using the setting in [.env.example](.env.example).
 
-An answer usually takes 10 to 30 seconds. If a model fails or is too slow, the message names the service and status, such as `Gemini request failed (404)`, which points to a wrong model name or key.
+An answer usually takes 10 to 30 seconds. If the check keeps failing, verify the service configuration for the deployment.
 
 California rules come only from the [California Courts guide to security deposits](https://selfhelp.courts.ca.gov/guide-security-deposits-california), stored as numbered sections in `lib/case-assistant.ts`. The assistant is told to say so when the guide doesn't cover a question, and each answer lists the sections it relied on. Update those sections when the guide changes. The assistant gives information, not legal advice.
 
-Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
-
-| Variable | Value |
-|---|---|
-| `GEMINI_API_KEY` (optional) | The Google AI Studio key used for Compare photos. Here it is only a stand-in for Claude. |
-| `ANTHROPIC_API_KEY` | A key from the [Claude Console](https://platform.claude.com/settings/keys), billed to your Claude API credit. Required for the assistant, the letter reader and the audit unless Gemini is set. |
-| `ANTHROPIC_MODEL` (optional) | A Claude model ID. The default is `claude-opus-5-5`; a smaller model such as `claude-haiku-5-5` costs less. |
-| `ANTHROPIC_FAST_MODE` (optional) | Leave unset to use Claude's fast mode, which answers at up to about 2.5 times the output speed for twice the standard price on `claude-opus-5-5`. Set it to `off` for standard speed and price. |
-
-The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Anthropic for each answer, and to Google only if Gemini stands in; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
+The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to an external service for each answer. The assistant does not send uploaded files or photos. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
 ## Live move-out audit backend
 
-The audit queues one selected photo pair per room when it starts. One Gemini pass assesses the room's condition and a second pass independently checks the same photos. The audit saves both findings. If the passes disagree or a photo is unclear, the room shows **Needs review**. Other rooms keep running while you capture a replacement photo and confirm the new pair. The audit keeps progress in Supabase and workers can continue after the renter closes the browser.
+The audit queues one selected photo pair per room when it starts. One pass assesses the room's condition and a second pass checks the same photos. The audit saves both findings. If the passes disagree or a photo is unclear, the room shows **Needs review**. Other rooms keep running while you capture a replacement photo and confirm the new pair. The audit keeps progress in Supabase and workers can continue after the renter closes the browser.
 
 1. After applying both earlier migrations, run the [audit migration](supabase/migrations/20261114000300_move_out_audits.sql) in Supabase SQL Editor. It adds the audit records, owner access policies, and a queue that hands each job to one worker at a time. The live view subscribes to Supabase Realtime and also checks for missed changes periodically.
-2. In Vercel, add `AUDIT_WORKER_SECRET` as a sensitive **Preview** variable next to the existing Gemini and Supabase keys. Generate a new random value for it, for example with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Redeploy the branch.
+2. In Vercel, add `AUDIT_WORKER_SECRET` as a sensitive **Preview** variable next to the existing service and Supabase keys. Generate a new random value for it, for example with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Redeploy the branch.
 3. Run `node scripts/audit-worker.mjs` with Node.js 24 in a persistent process. For a demo, use a terminal on your computer. To keep it running after your computer disconnects, use the same command on a Node worker host with the repository checked out. Set these environment variables on that machine:
 
    | Worker variable | Value |
@@ -181,7 +161,7 @@ The audit queues one selected photo pair per room when it starts. One Gemini pas
    | `AUDIT_WORKER_SECRET` | The same secret set in Vercel |
    | `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional. Use the project's [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret for a protected preview. |
 
-   You can put these in a local `.env.audit` file and run `node --env-file=.env.audit scripts/audit-worker.mjs`. Keep that file private. The worker reaches only the audit endpoint; the Gemini and Supabase secret keys stay on Vercel. Stop your local worker with Ctrl+C when you finish the demo.
+   You can put these in a local `.env.audit` file and run `node --env-file=.env.audit scripts/audit-worker.mjs`. Keep that file private. The worker reaches only the audit endpoint; the service and Supabase secret keys stay on Vercel. Stop your local worker with Ctrl+C when you finish the demo.
    The worker can still process existing audit jobs. My Inspections now shows photo comparisons by room.
 
 For local development, put the relevant variables in `.env.local`, then run `npm ci` and `npm run dev`. Add `http://localhost:3000/inspections` to the Supabase redirect allowlist if you test local sign-up. Run `node --test tests/*.test.mjs` with Node.js 24 to check the inspection and audit logic.

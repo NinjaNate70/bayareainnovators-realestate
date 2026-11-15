@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import { compareCasePhotos } from '@/lib/case-photo-compare';
 import { defaultClaudeModel } from '@/lib/claude-json';
+import { neutralService } from '@/lib/neutral-copy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ type StoredCase = {
 
 // Names the service and status only, never response text or keys.
 function failure(error: unknown) {
-  if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
+  if (error instanceof Error && error.name === 'TimeoutError') return 'the photo comparison service took too long';
   const message = error instanceof Error ? error.message : '';
   if (error instanceof Error && error.name === 'AiServiceError') return message.slice(0, -1);
   return /^(Gemini|Claude) (request failed \(\d{3}\)|did not return a complete \w+|declined the request|could not be reached)\.$/.test(message)
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
   const claudeKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!url || !publishableKey || (!claudeKey && !geminiKey)) {
-    return respond('Photo analysis isn’t set up yet. Ask your project admin to add the Claude API key.', 503);
+    return respond('Photo comparison is not configured. Ask your project admin to finish setup.', 503);
   }
   const startedAt = Date.now();
 
@@ -130,6 +131,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const reason = failure(error);
     console.warn('Case photo comparison failed:', reason);
-    return respond(`The photo comparison couldn’t finish (${reason}). Try again in a moment.`, 502);
+    return respond(`The photo comparison couldn’t finish (${neutralService(reason)}). Try again in a moment.`, 502);
   }
 }

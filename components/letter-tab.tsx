@@ -115,8 +115,7 @@ export function LetterTab({
                   : "Start with a request for supporting records. No unsupported monetary claim will be included."}
               </p>
               <p className="small muted">
-                This MVP uses a local template. There is no live AI generation
-                or automatic sending.
+                This draft uses a template. You can review it before sending it yourself.
               </p>
             </div>
           ) : (

@@ -1973,7 +1973,7 @@ textarea {
   border-radius: 50%;
   background: #176f5a12;
 }
-/* AI photo comparison on the case Photos tab */
+/* Photo comparison on the case Photos tab */
 .photo-observation > div {
   min-width: 0;
   flex: 1;

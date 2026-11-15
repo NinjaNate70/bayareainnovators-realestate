@@ -193,8 +193,7 @@ export function RepliesTab({
               room to respond.
             </p>
             <p className="small muted">
-              This MVP prepares a local template. It does not interpret the
-              message with live AI or send anything.
+              This draft uses a template. Review it against the received message before sending it yourself.
             </p>
           </Card>
         </div>

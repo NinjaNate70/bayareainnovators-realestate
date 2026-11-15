@@ -542,7 +542,7 @@ export function CaseWizard() {
                     </label>
                     <p className="small muted">
                       {hosted
-                        ? "When you continue, our system reads your letter and lease to find the charges, dates and amounts. You’ll check and correct them on the next step. Tick “No letter / enter manually” to type them yourself instead."
+                        ? "When you continue, your letter and lease are sent to an external service to find the charges, dates and amounts. You’ll check and correct them on the next step. Choose “No letter / enter manually” to type them yourself instead."
                         : "Automatic extraction is not connected. For your own documents, you’ll enter and confirm charges in the next step."}
                     </p>
                   </div>
@@ -647,14 +647,20 @@ export function CaseWizard() {
                         </p>
                       )}
                       {canScan && (
-                        <Button
-                          variant="outline"
-                          onClick={() => void scanLetter(data)}
-                        >
-                          {data.charges.length
-                            ? "Read the letter again (replaces these charges)"
-                            : "Read the charges from my letter"}
-                        </Button>
+                        <>
+                          <p className="small muted" id="read-letter-disclosure">
+                            Sends your letter and lease to an external service to read the charges.
+                          </p>
+                          <Button
+                            variant="outline"
+                            aria-describedby="read-letter-disclosure"
+                            onClick={() => void scanLetter(data)}
+                          >
+                            {data.charges.length
+                              ? "Read the letter again (replaces these charges)"
+                              : "Read the charges from my letter"}
+                          </Button>
+                        </>
                       )}
                       {invalid === "charges" && (
                         <p className="inline-error">{error}</p>
@@ -871,11 +877,11 @@ export function CaseWizard() {
                       </strong>
                       <p>
                         {data.demo
-                          ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
+                          ? "This example includes prewritten findings and illustrative rule references."
                           : !data.charges.length
                             ? "No itemized charges were entered, so there is no charge-by-charge audit. Your case will be saved with your documents and photos, and you can add charges later if your landlord sends a list. The result is information, not legal advice."
                             : hosted
-                            ? "Our system reads your deduction letter, lease, other documents, photos and case details to build your audit, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
+                            ? "Your deduction letter, lease, other documents, photos and case details are sent to an external service for review. Each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>
