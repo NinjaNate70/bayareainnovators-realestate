@@ -85,6 +85,9 @@ export function Landing() {
                 <ArrowUpRight size={17} aria-hidden="true" />
               </Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link href="/inspections">My Inspections</Link>
+            </Button>
           </div>
           <div className="hero-assurance">
             <span>
