@@ -65,7 +65,13 @@ const verdict = { charges: [
   { charge_id: 'C2', status: 'disputable', reason: 'No receipt is attached.', evidence_ids: ['L1'], guide_sections: ['G4'], requests: ['Ask for the cleaning invoice'] },
   { charge_id: 'C3', status: 'info', reason: 'The key is not mentioned.', evidence_ids: [], guide_sections: [], requests: ['The key return receipt'] },
 ] };
-const keys = { guide, geminiKey: 'g-key', geminiModel: 'gemini-test', openAiKey: 'o-key', openAiModel: 'openai-test' };
+const keys = { guide, geminiKey: 'g-key', geminiModel: 'gemini-test', openAiKey: 'o-key', openAiModel: 'openai-test', retryDelay: 0 };
+// Which job an OpenAI request is doing, from what it carries.
+const openAiRole = (body) => {
+  const parts = body.messages[1].content;
+  if (parts.some((part) => part.type === 'file' || part.image_url?.url.startsWith('data:image/png'))) return 'documents';
+  return parts.some((part) => part.type === 'image_url') ? 'photos' : 'auditor';
+};
 const role = (body) => (body.contents?.[0].parts.some((part) => part.inline_data) ? 'photos' : body.contents ? 'auditor' : 'documents');
 
 test('OpenAI reads the documents, Gemini the photos, and the auditor sees both', async () => {
@@ -113,8 +119,8 @@ test('Gemini reads the documents when OpenAI is missing or failing', async () =>
 
 test('evidence a reader could not open cannot support a finding', async () => {
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    if (String(url).includes('openai.com')) return openai(reading);
     const body = JSON.parse(init.body);
+    if (String(url).includes('openai.com')) return openAiRole(body) === 'documents' ? openai(reading) : new Response('down', { status: 500 });
     if (role(body) === 'photos') return new Response('down', { status: 503 });
     assert.match(body.contents[0].parts[0].text, /photos could not be examined/);
     return gemini(verdict);
@@ -136,11 +142,47 @@ test('a case with no files is audited without the readers and stays open', async
   assert.deepEqual(result.charges.map((c) => c.verdict), ['info', 'info', 'info']);
 });
 
-test('the audit fails as a whole if the auditor fails', async () => {
+test('the audit fails as a whole, naming Gemini, if no auditor answers', async () => {
   await assert.rejects(runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    if (String(url).includes('openai.com')) return openai(reading);
-    return role(JSON.parse(init.body)) === 'photos' ? gemini(seen) : new Response('down', { status: 500 });
+    const body = JSON.parse(init.body);
+    if (String(url).includes('openai.com')) return openAiRole(body) === 'documents' ? openai(reading) : new Response('down', { status: 500 });
+    return role(body) === 'photos' ? gemini(seen) : new Response('down', { status: 500 });
   } }), /Gemini request failed \(500\)/);
+});
+
+test('a busy Gemini model is retried once', async () => {
+  const attempts = { photos: 0, auditor: 0 };
+  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (String(url).includes('openai.com')) {
+      assert.equal(openAiRole(body), 'documents');
+      return openai(reading);
+    }
+    const job = role(body);
+    attempts[job] += 1;
+    if (attempts[job] === 1) return new Response('overloaded', { status: 503 });
+    return gemini(job === 'photos' ? seen : verdict);
+  } });
+  assert.deepEqual(attempts, { photos: 2, auditor: 2 });
+  assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
+});
+
+test('OpenAI examines the photos and audits when Gemini stays overloaded', async () => {
+  const openAiJobs = [];
+  let geminiCalls = 0;
+  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (!String(url).includes('openai.com')) { geminiCalls += 1; return new Response('overloaded', { status: 503 }); }
+    const job = openAiRole(body);
+    openAiJobs.push(job);
+    assert.match(body.messages[0].content, /Return JSON with/);
+    return openai(job === 'documents' ? reading : job === 'photos' ? seen : verdict);
+  } });
+  assert.deepEqual(openAiJobs.sort(), ['auditor', 'documents', 'photos']);
+  // Photos and auditor each tried Gemini twice before handing over.
+  assert.equal(geminiCalls, 4);
+  assert.deepEqual([result.documents_read, result.photos_read], [2, 2]);
+  assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
 });
 
 test('an estimate needs audited findings', () => {

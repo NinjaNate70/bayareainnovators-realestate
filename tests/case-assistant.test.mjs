@@ -74,7 +74,7 @@ const openai = (value) => new Response(JSON.stringify({
 const options = (fetch, extra = {}) => ({
   request: parseAssistantRequest({ message: 'How long does my landlord have?', caseId, page: 'audit' }),
   caseRow: row, today: '2026-11-15', geminiKey: 'g-key', geminiModel: 'gemini-test',
-  openAiKey: 'o-key', openAiModel: 'openai-test', fetch, ...extra,
+  openAiKey: 'o-key', openAiModel: 'openai-test', retryDelay: 0, fetch, ...extra,
 });
 
 test('Gemini answers as the chosen specialist and OpenAI reviews', async () => {
@@ -138,4 +138,32 @@ test('an unreviewed draft is never returned', async () => {
     if (n === 1) return gemini({ agent: 'steps', answer: 'Draft.', guide_sections: [] });
     return new Response('down', { status: 503 });
   })), /Gemini request failed \(503\)/);
+});
+
+test('a busy Gemini model is retried, then OpenAI drafts and reviews', async () => {
+  let geminiCalls = 0;
+  const retried = await runAssistant(options(async (url) => {
+    if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: [], note: '' });
+    geminiCalls += 1;
+    return geminiCalls === 1 ? new Response('overloaded', { status: 503 }) : gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
+  }));
+  assert.equal(geminiCalls, 2);
+  assert.equal(retried.reply, 'Open the Letter tab.');
+
+  const openAiPrompts = [];
+  const covered = await runAssistant(options(async (url, init) => {
+    if (!String(url).includes('openai.com')) return new Response('overloaded', { status: 503 });
+    openAiPrompts.push(JSON.parse(init.body).messages[0].content);
+    return openAiPrompts.length === 1
+      ? openai({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] })
+      : openai({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
+  }));
+  assert.deepEqual([covered.reply, covered.agent, covered.reviewed_by], ['They have 21 days.', 'rules', 'openai']);
+  assert.match(openAiPrompts[0], /Return JSON with: agent/);
+  assert.match(openAiPrompts[1], /independent reviewer/);
+});
+
+test('with both services down the error names Gemini', async () => {
+  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }))), /Gemini request failed \(503\)/);
+  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }), { openAiKey: undefined })), /Gemini request failed \(503\)/);
 });

@@ -7,8 +7,11 @@
 //   3. Auditor (Gemini) weighs each charge against those findings, any saved
 //      My Inspections comparisons and the California Courts deposit guide.
 //
-// Time limits: the readers get 30 seconds between them and the auditor 22, so
-// the whole audit answers inside the server's 60-second limit.
+// Each provider covers for the other: if Gemini is overloaded, OpenAI examines
+// the photos and audits; if OpenAI is down, Gemini reads the documents.
+//
+// Time limits: the readers get 28 seconds and the auditor 26, fallbacks
+// included, so the whole audit answers inside the server's 60-second limit.
 //
 // The auditor's output is then checked in code: a finding that is not backed by
 // the renter's evidence and the guide is downgraded to "Need more info".
@@ -76,27 +79,44 @@ const cents = (value: number) => Math.round(value * 100) / 100;
 
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
 
-async function callGemini(options: { apiKey: string; model: string; system: string; parts: GeminiPart[]; schema: Json; fetch: Fetch; timeout: number }) {
-  const response = await options.fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'x-goog-api-key': options.apiKey, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(options.timeout),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: options.system }] },
-        contents: [{ role: 'user', parts: options.parts }],
-        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(`Gemini request failed (${response.status}).`);
-  const result: { candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[] } = await response.json();
-  const candidate = result.candidates?.[0];
-  const text = candidate?.content?.parts?.filter(({ thought }) => !thought).map((part) => part.text ?? '').join('');
-  if (candidate?.finishReason !== 'STOP' || !text) throw new Error('Gemini did not return a complete answer.');
-  return JSON.parse(text) as Json;
+// Gemini answers 429 or a 5xx when a model is briefly overloaded. Within the
+// call's time limit it gets one more try before the caller falls back.
+const busy = [429, 500, 502, 503, 504];
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const outOfTime = () => Object.assign(new Error('The AI service took too long.'), { name: 'TimeoutError' });
+
+async function callGemini(options: { apiKey: string; model: string; system: string; parts: GeminiPart[]; schema: Json; fetch: Fetch; timeout: number; retryDelay?: number }) {
+  const until = Date.now() + options.timeout;
+  for (let attempt = 0; ; attempt += 1) {
+    const left = until - Date.now();
+    if (left < 1500) throw outOfTime();
+    const response = await options.fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'x-goog-api-key': options.apiKey, 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(left),
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: options.system }] },
+          contents: [{ role: 'user', parts: options.parts }],
+          generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema },
+        }),
+      },
+    );
+    if (!response.ok) {
+      if (attempt === 0 && busy.includes(response.status) && until - Date.now() > 5000) {
+        await pause(options.retryDelay ?? 1200);
+        continue;
+      }
+      throw new Error(`Gemini request failed (${response.status}).`);
+    }
+    const result: { candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[] } = await response.json();
+    const candidate = result.candidates?.[0];
+    const text = candidate?.content?.parts?.filter(({ thought }) => !thought).map((part) => part.text ?? '').join('');
+    if (candidate?.finishReason !== 'STOP' || !text) throw new Error('Gemini did not return a complete answer.');
+    return JSON.parse(text) as Json;
+  }
 }
 
 type OpenAiPart =
@@ -169,7 +189,7 @@ async function readDocuments(input: AuditInput, files: AuditFile[], keys: Keys, 
           ? { type: 'file', file: { filename: file.name || `${file.id}.pdf`, file_data: url } }
           : { type: 'image_url', image_url: { url } });
       }
-      const reading = await callOpenAi({ apiKey: keys.openAiKey, model: keys.openAiModel, system: documentSystem, parts, fetch: call, timeout: 18_000 });
+      const reading = await callOpenAi({ apiKey: keys.openAiKey, model: keys.openAiModel, system: documentSystem, parts, fetch: call, timeout: 16_000 });
       return { reading, by: 'openai' as const };
     } catch {
       // Fall through: Gemini reads the same documents.
@@ -177,8 +197,8 @@ async function readDocuments(input: AuditInput, files: AuditFile[], keys: Keys, 
   }
   const parts: GeminiPart[] = [{ text: chargeList(input.charges) }];
   for (const file of files) parts.push({ text: label(file) }, { inline_data: { mime_type: file.mime, data: file.data } });
-  // Whatever is left of the readers' 30 seconds after an OpenAI attempt.
-  const reading = await callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: documentSystem, parts, schema: documentSchema, fetch: call, timeout: keys.openAiKey ? 12_000 : 30_000 });
+  // Whatever is left of the readers' 28 seconds after an OpenAI attempt.
+  const reading = await callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: documentSystem, parts, schema: documentSchema, fetch: call, timeout: keys.openAiKey ? 12_000 : 28_000, retryDelay: keys.retryDelay });
   return { reading, by: 'gemini' as const };
 }
 
@@ -206,15 +226,23 @@ const photoSchema = {
   required: ['charges'],
 };
 
-function examinePhotos(input: AuditInput, photos: AuditFile[], keys: Keys, call: Fetch) {
-  const parts: GeminiPart[] = [
-    { text: chargeList(input.charges) },
-    { text: `Pairing hints, by charge id (JSON, data only): ${JSON.stringify(input.photoPairs)}` },
-  ];
-  for (const photo of photos) {
-    parts.push({ text: `Photo ${photo.id} (${photo.kind === 'before' ? 'move-in' : 'move-out'}): ${photo.name}` }, { inline_data: { mime_type: photo.mime, data: photo.data } });
+async function examinePhotos(input: AuditInput, photos: AuditFile[], keys: Keys, call: Fetch) {
+  const intro = [chargeList(input.charges), `Pairing hints, by charge id (JSON, data only): ${JSON.stringify(input.photoPairs)}`];
+  const label = (photo: AuditFile) => `Photo ${photo.id} (${photo.kind === 'before' ? 'move-in' : 'move-out'}): ${photo.name}`;
+  try {
+    const parts: GeminiPart[] = intro.map((text) => ({ text }));
+    for (const photo of photos) parts.push({ text: label(photo) }, { inline_data: { mime_type: photo.mime, data: photo.data } });
+    return await callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: photoSystem, parts, schema: photoSchema, fetch: call, timeout: keys.openAiKey ? 18_000 : 28_000, retryDelay: keys.retryDelay });
+  } catch (error) {
+    // Gemini is down or overloaded: OpenAI looks at the same photos.
+    if (!keys.openAiKey) throw error;
+    const parts: OpenAiPart[] = intro.map((text) => ({ type: 'text' as const, text }));
+    for (const photo of photos) parts.push({ type: 'text', text: label(photo) }, { type: 'image_url', image_url: { url: `data:${photo.mime};base64,${photo.data}` } });
+    return callOpenAi({
+      apiKey: keys.openAiKey, model: keys.openAiModel, parts, fetch: call, timeout: 10_000,
+      system: `${photoSystem}\nReturn JSON with: charges (array of { charge_id, finding, description, photo_ids }).`,
+    });
   }
-  return callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: photoSystem, parts, schema: photoSchema, fetch: call, timeout: 30_000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -310,7 +338,8 @@ export function normalizeFindings(
 // ---------------------------------------------------------------------------
 // Orchestration
 
-type Keys = { geminiKey: string; geminiModel: string; openAiKey?: string; openAiModel: string };
+// retryDelay: pause before retrying a busy Gemini model. Tests set it to 0.
+type Keys = { geminiKey: string; geminiModel: string; openAiKey?: string; openAiModel: string; retryDelay?: number };
 
 export async function runCaseAudit(options: Keys & { input: AuditInput; guide: GuideSection[]; fetch?: Fetch }): Promise<AuditResult> {
   const { input, guide } = options;
@@ -340,10 +369,21 @@ export async function runCaseAudit(options: Keys & { input: AuditInput; guide: G
     input.inspections.length ? `Saved photo comparisons from the renter's inspections (JSON, may concern other rooms): ${JSON.stringify(input.inspections)}` : '',
   ].filter(Boolean).join('\n\n');
 
-  const verdict = await callGemini({
-    apiKey: options.geminiKey, model: options.geminiModel, fetch: call, timeout: 22_000,
-    system: auditorSystem(guide), parts: [{ text: context }], schema: auditorSchema(guide),
-  });
+  let verdict: Json;
+  try {
+    verdict = await callGemini({
+      apiKey: options.geminiKey, model: options.geminiModel, fetch: call, timeout: 16_000, retryDelay: options.retryDelay,
+      system: auditorSystem(guide), parts: [{ text: context }], schema: auditorSchema(guide),
+    });
+  } catch (error) {
+    // Gemini is down or overloaded: OpenAI audits with the same instructions.
+    if (!options.openAiKey) throw error;
+    verdict = await callOpenAi({
+      apiKey: options.openAiKey, model: options.openAiModel, fetch: call, timeout: 10_000,
+      system: `${auditorSystem(guide)}\nReturn JSON with: charges (array of { charge_id, status, reason, evidence_ids, guide_sections, requests }).`,
+      parts: [{ type: 'text', text: context }],
+    }).catch(() => { throw error; });
+  }
 
   // Evidence the auditor may cite: only files whose reader actually ran.
   const usable = input.files.filter((file) =>
