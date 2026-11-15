@@ -133,7 +133,7 @@ The wizard's first step has a third upload area, **More documents that help your
 
 Limits to know about:
 
-- One audit reviews up to 10 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
+- One audit reviews up to 10 documents and 8 photos, with a separate 12 MiB budget for each. The photo budget counts the JPEG copies resized for analysis to a maximum of 1,568 pixels on the long edge. Supabase keeps the originals. The charge's request list names files left out of the audit.
 - Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
 - The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
 - If neither `ANTHROPIC_API_KEY` nor `GEMINI_API_KEY` is set, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 import { depositGuide } from '@/lib/deposit-guide';
 import { runCaseAudit, type AuditFile, type AuditInput, type InspectionNote } from '@/lib/case-audit';
 import { defaultClaudeModel } from '@/lib/claude-json';
@@ -18,6 +19,8 @@ const kinds = ['letter', 'lease', 'other', 'before', 'after'] as const;
 const mimes = ['application/pdf', 'image/png', 'image/jpeg'];
 // What one audit sends to each model: a few files, within the models' inline limits.
 const limits = { documents: { count: 10, bytes: 12 * 1024 * 1024 }, photos: { count: 8, bytes: 12 * 1024 * 1024 } };
+const photoLongEdge = 1568;
+const maxPhotoPixels = 64_000_000;
 
 // An audit makes several model calls with files attached, so it is rationed
 // more tightly than chat. Per server instance: it limits bursts.
@@ -136,11 +139,37 @@ export async function POST(request: Request) {
     const skip = (reason: string) => skipped.push({ id, name, reason });
     const download = downloads[index];
     if (download.error || !download.data) { skip('the file could not be opened.'); continue; }
-    const mime = mimes.includes(download.data.type) ? download.data.type : file.type;
+    let mime = mimes.includes(download.data.type) ? download.data.type : file.type;
     if (!mimes.includes(mime) || (group === 'photos' && mime === 'application/pdf')) { skip('this file type can’t be analyzed.'); continue; }
-    if (used[group].bytes + download.data.size > limits[group].bytes) { skip('the files together are too large for one audit. Use a smaller copy.'); continue; }
-    used[group].bytes += download.data.size;
-    files.push({ id, kind, name, mime, data: Buffer.from(await download.data.arrayBuffer()).toString('base64') });
+
+    // Resize only the copy sent to the model. Budget the JPEG before base64 encoding.
+    let resizedPhoto: Buffer | undefined;
+    if (group === 'photos') {
+      try {
+        const original = Buffer.from(await download.data.arrayBuffer());
+        const image = sharp(original, { limitInputPixels: maxPhotoPixels });
+        const { format } = await image.metadata();
+        if (format !== 'jpeg' && format !== 'png') {
+          skip('this file type can’t be analyzed.');
+          continue;
+        }
+        resizedPhoto = await image.autoOrient()
+          .resize(photoLongEdge, photoLongEdge, { fit: 'inside', withoutEnlargement: true })
+          .flatten({ background: '#fff' })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        mime = 'image/jpeg';
+      } catch {
+        skip('the photo could not be prepared for analysis.');
+        continue;
+      }
+    }
+
+    const bytes = resizedPhoto?.length ?? download.data.size;
+    if (used[group].bytes + bytes > limits[group].bytes) { skip('the files together are too large for one audit. Use a smaller copy.'); continue; }
+    used[group].bytes += bytes;
+    const data = resizedPhoto ?? Buffer.from(await download.data.arrayBuffer());
+    files.push({ id, kind, name, mime, data: data.toString('base64') });
   }
 
   // Results the renter already has from Compare photos in My Inspections.

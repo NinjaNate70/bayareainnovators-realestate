@@ -28,7 +28,7 @@ export type AuditFile = {
   kind: 'letter' | 'lease' | 'other' | 'before' | 'after';
   name: string;
   mime: string;
-  // Base64 of the original bytes.
+  // Base64 of the bytes sent to the model.
   data: string;
 };
 export type InspectionNote = { room: string; spot: string; category: string; summary: string };
