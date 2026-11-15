@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 declare global {
   interface Window {
@@ -221,7 +220,8 @@ test("signup, verify, case/photo persistence, expiry recovery, and account isola
 test("form semantics, focus, mobile reflow and hidden OAuth", async ({
   page,
 }) => {
-  await mkdir("output/auth-qa", { recursive: true });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
   for (const width of [320, 375, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/login");
@@ -239,7 +239,7 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
         .evaluate((el) => getComputedStyle(el).fontSize),
     ).toBe("16px");
     await page.screenshot({
-      path: `output/auth-qa/login-${width}.png`,
+      path: test.info().outputPath(`login-${width}.png`),
       fullPage: true,
     });
   }
@@ -272,7 +272,7 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/signup");
   await page.screenshot({
-    path: "output/auth-qa/signup-mobile.png",
+    path: test.info().outputPath("signup-mobile.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 812, height: 375 });
@@ -281,6 +281,7 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(pageErrors).toEqual([]);
 });
 test("Create account stays disabled until the terms are accepted", async ({
   page,
@@ -474,6 +475,8 @@ test("WCAG AA checks, timed sign-in lockout, and zoom reflow", async ({
   page,
   browser,
 }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
   for (const route of [
     "/login",
     "/signup",
@@ -530,5 +533,6 @@ test("WCAG AA checks, timed sign-in lockout, and zoom reflow", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(pageErrors).toEqual([]);
   await context.close();
 });
