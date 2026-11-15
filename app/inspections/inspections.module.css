@@ -87,6 +87,7 @@
 .comparisonNote { font-size: 0.85rem; }
 .comparisonHistory { margin-top: 0.75rem; }
 .comparisonHistory summary { cursor: pointer; font-weight: 750; }
+.auditRoom { border-top: 1px solid #deebe4; margin-top: 0.75rem; padding: 0.75rem 0; }
 
 @media (max-width: 35rem) {
   .page { padding-top: 1rem; }

@@ -1,9 +1,10 @@
 'use client';
 
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
 import { ComparePhotos } from './compare-photos';
+import { MoveOutAudit } from './move-out-audit';
 import styles from './inspections.module.css';
 
 const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -20,6 +21,7 @@ type Lease = { id: string; name: string };
 type Photo = { id: string; phase: Phase; original_name: string; content_type: string; storage_path: string; uploaded_at: string };
 type Room = { id: string; name: string; inspection_photos: Photo[] };
 type Gallery = { rooms: Room[]; urls: Record<string, string> };
+type CaptureControls = { prepare: (roomId: string, phase: Phase) => void };
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -173,6 +175,7 @@ function LeaseList({ supabase, user }: { supabase: SupabaseClient; user: User })
 }
 
 function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClient; leaseId: string; userId: string }) {
+  const capture = useRef<CaptureControls>(null);
   const [gallery, setGallery] = useState<Gallery>({ rooms: [], urls: {} });
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -242,7 +245,12 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
           <button className={styles.secondary} disabled={adding}>Add room</button>
         </form>
       </section>
-      {gallery.rooms.length > 0 && <CapturePhoto supabase={supabase} userId={userId} rooms={gallery.rooms} onSaved={loadGallery} />}
+      {gallery.rooms.length > 0 && <CapturePhoto supabase={supabase} userId={userId} rooms={gallery.rooms} onSaved={loadGallery} captureRef={capture} />}
+      {gallery.rooms.length > 0 && <MoveOutAudit supabase={supabase} leaseId={leaseId} rooms={gallery.rooms} refreshPhotos={loadGallery}
+        onRetake={(roomId, phase) => capture.current?.prepare(roomId, phase)} renderPhoto={(room, id) => {
+        const photo = gallery.rooms.find((item) => item.id === room.id)?.inspection_photos.find((item) => item.id === id);
+        return photo ? <PhotoPreview key={`${id}/${gallery.urls[photo.storage_path]}`} url={gallery.urls[photo.storage_path]} photo={photo} /> : null;
+      }} />}
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Inspection photos</h2>
@@ -326,17 +334,36 @@ function PhotoPreview({ url, photo }: { url?: string; photo: Photo }) {
   );
 }
 
-function CapturePhoto({ supabase, userId, rooms, onSaved }: {
+function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
   supabase: SupabaseClient;
   userId: string;
   rooms: Room[];
   onSaved: () => Promise<void>;
+  captureRef: Ref<CaptureControls>;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [roomId, setRoomId] = useState(rooms[0]?.id ?? '');
+  const [phase, setPhase] = useState<Phase>('move_in');
+  const [auditRoomId, setAuditRoomId] = useState('');
+  const captureForm = useRef<HTMLFormElement>(null);
   const pendingId = useRef<string | null>(null);
+
+  useImperativeHandle(captureRef, () => ({
+    prepare(room, phase) {
+      if (busy) return;
+      pendingId.current = null;
+      setRoomId(room);
+      setPhase(phase);
+      setAuditRoomId(room);
+      setFile(null);
+      for (const input of captureForm.current?.querySelectorAll<HTMLInputElement>('input[type="file"]') ?? []) input.value = '';
+      setError('');
+      setMessage('');
+    },
+  }), [busy]);
 
   function selectFile(next: File | null) {
     pendingId.current = null;
@@ -349,9 +376,6 @@ function CapturePhoto({ supabase, userId, rooms, onSaved }: {
     event.preventDefault();
     if (!file || busy) return;
     const form = event.currentTarget;
-    const data = new FormData(form);
-    const roomId = String(data.get('room'));
-    const phase = String(data.get('phase'));
     setBusy(true);
     setError('');
     setMessage('');
@@ -397,15 +421,15 @@ function CapturePhoto({ supabase, userId, rooms, onSaved }: {
   }
 
   return (
-    <section className={styles.panel}>
+    <section id="capture-inspection-photo" className={styles.panel}>
       <h2>Add an inspection photo</h2>
-      <form onSubmit={uploadPhoto}>
+      <form ref={captureForm} onSubmit={uploadPhoto}>
         <fieldset className={styles.form} disabled={busy}>
           <div className={styles.phases}>
-            <label>Room<select name="room" onChange={() => { pendingId.current = null; }}>
+            <label>Room<select name="room" value={roomId} onChange={(event) => { pendingId.current = null; setRoomId(event.target.value); }}>
               {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
             </select></label>
-            <label>Inspection phase<select name="phase" onChange={() => { pendingId.current = null; }}>
+            <label>Inspection phase<select name="phase" value={phase} onChange={(event) => { pendingId.current = null; setPhase(event.target.value as Phase); }}>
               {phases.map((phase) => <option key={phase.value} value={phase.value}>{phase.label}</option>)}
             </select></label>
           </div>
@@ -419,6 +443,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved }: {
       </form>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {message && <p role="status">{message}</p>}
+      {auditRoomId && <p><a href={`#audit-room-${auditRoomId}`} className={styles.back}>Back to audit room</a></p>}
     </section>
   );
 }

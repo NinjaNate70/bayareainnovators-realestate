@@ -52,4 +52,21 @@ The app reuses the saved result for the same two photo IDs, including the spot a
 
 Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region such as `san luis obispo, ca`, a stable code such as `patch_small_drywall_hole`, a short repair title, a low and high amount in cents, a three-letter currency code, a pricing unit, the source, and the effective date. Use currencies with two decimal places. The optional pricing region on the comparison form must match the catalog region. If there is no matching entry, the app saves the repair assessment and shows that a price is unavailable. A comparison keeps a snapshot of the price shown at the time it ran.
 
-For local development, put the relevant variables in `.env.local`, then run `npm ci` and `npm run dev`. Add `http://localhost:3000/inspections` to the Supabase redirect allowlist if you test local sign-up. Run `node --test tests/*.test.mjs` with Node.js 24 to check the inspection logic.
+## Run a live move-out audit
+
+The audit queues one selected photo pair per room when it starts. One Gemini pass assesses the room's condition and a second pass independently checks the same photos. The audit saves both findings. If the passes disagree or a photo is unclear, the room shows **Needs review**. Other rooms keep running while you capture a replacement photo and confirm the new pair. The audit keeps progress in Supabase and workers can continue after the renter closes the browser.
+
+1. After applying both earlier migrations, run the [audit migration](supabase/migrations/20261114000300_move_out_audits.sql) in Supabase SQL Editor. It adds the audit records, owner access policies, and a queue that hands each job to one worker at a time. The live view subscribes to Supabase Realtime and also checks for missed changes periodically.
+2. In Vercel, add `AUDIT_WORKER_SECRET` as a sensitive **Preview** variable next to the existing Gemini and Supabase keys. Generate a new random value for it, for example with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Redeploy the branch.
+3. Run `node scripts/audit-worker.mjs` with Node.js 24 in a persistent process. For a demo, use a terminal on your computer. To keep it running after your computer disconnects, use the same command on a Node worker host with the repository checked out. Set these environment variables on that machine:
+
+   | Worker variable | Value |
+   |---|---|
+   | `AUDIT_APP_URL` | The origin of the project deployment, such as `https://your-vercel-preview.vercel.app` |
+   | `AUDIT_WORKER_SECRET` | The same secret set in Vercel |
+   | `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional. Use the project's [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret for a protected preview. |
+
+   You can put these in a local `.env.audit` file and run `node --env-file=.env.audit scripts/audit-worker.mjs`. Keep that file private. The worker reaches only the audit endpoint; the Gemini and Supabase secret keys stay on Vercel. Stop your local worker with Ctrl+C when you finish the demo.
+4. Open **My Inspections → Live move-out audit** on a lease with photos for at least two rooms. Select and confirm the pairs, and leave one room's move-out photo missing. Start the audit. The other rooms should show both review stages. Take the missing photo on your phone, then open **Choose photos and resume this room** and confirm the pair. The room should finish alongside the other results. Try reopening the audit on a second device and verify that a second account cannot see it.
+
+For local development, put the relevant variables in `.env.local`, then run `npm ci` and `npm run dev`. Add `http://localhost:3000/inspections` to the Supabase redirect allowlist if you test local sign-up. Run `node --test tests/*.test.mjs` with Node.js 24 to check the inspection and audit logic.
