@@ -194,11 +194,17 @@ export function CaseAssistant({
             <span className="sr-only">Send</span>
           </Button>
         </form>
-        <AiCheck />
+        {showAiStatus && <AiCheck />}
       </div>
     </Sheet>
   );
 }
+
+// The AI connection check is for the team, not renters: it names the AI
+// services. It shows in development, or when NEXT_PUBLIC_SHOW_AI_STATUS=true.
+const showAiStatus =
+  process.env.NODE_ENV === "development" ||
+  process.env.NEXT_PUBLIC_SHOW_AI_STATUS === "true";
 
 type ServiceStatus = {
   service: string;
