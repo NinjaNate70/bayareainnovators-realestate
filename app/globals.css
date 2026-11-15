@@ -1011,7 +1011,7 @@ textarea {
 }
 .app-topbar {
   height: 80px;
-  padding: 0 40px;
+  padding: 0 max(40px, calc((100% - 1200px) / 2));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1020,6 +1020,7 @@ textarea {
 }
 .breadcrumb {
   display: flex;
+  align-items: center;
   gap: 12px;
   font-size: 14px;
   color: var(--muted);
@@ -2210,6 +2211,8 @@ textarea {
 }
 .recent-case-card {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 16px;
   padding: 24px;
@@ -2236,6 +2239,16 @@ textarea {
   color: var(--green);
   font-size: 14px;
   font-weight: 700;
+}
+.workspace-case-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workspace-case-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .fairness-band {
   margin-top: 40px;
@@ -2365,6 +2378,14 @@ textarea {
   .recent-case-card {
     flex-wrap: wrap;
     padding: 20px;
+  }
+  .workspace-case-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .workspace-case-row > button {
+    align-self: flex-end;
   }
   .recent-cta {
     width: 100%;

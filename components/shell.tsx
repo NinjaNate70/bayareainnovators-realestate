@@ -35,6 +35,11 @@ export function Shell({
 }) {
   const path = usePathname();
   const { session } = useAuth();
+  const pageTitle = path === "/case/new" ? "New case"
+    : path.startsWith("/case/") ? "Case file"
+    : path === "/account" ? "Account settings"
+    : path === "/documents" ? "Documents"
+    : "Home";
   const global = [
     { label: "Home", href: "/", icon: Home },
     { label: "New case", href: "/case/new", icon: Plus },
@@ -107,19 +112,15 @@ export function Shell({
             <ShieldCheck size={22} aria-hidden="true" />
             Tenant Shield
           </Link>
-          <div className="breadcrumb">
-            <Link href="/">Workspace</Link>
-            <span>/</span>
-            <span>
-              {caseId
-                ? "Case file"
-                : path === "/account"
-                  ? "Account settings"
-                  : path === "/case/new"
-                    ? "New case"
-                    : "Overview"}
-            </span>
-          </div>
+          <nav className="breadcrumb" aria-label="Breadcrumb">
+            {pageTitle !== "Home" && (
+              <>
+                <Link href="/">Home</Link>
+                <span aria-hidden="true">/</span>
+              </>
+            )}
+            <span aria-current="page">{pageTitle}</span>
+          </nav>
           <div className="topbar-end">
             <div className={session ? "mobile-account" : ""}>
               <AccountMenu compact />

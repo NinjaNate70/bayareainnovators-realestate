@@ -20,38 +20,57 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SourceChip, VerdictChip } from "@/components/evidence";
 import { demoCase } from "@/lib/fixtures/demo-case";
-import { money } from "@/lib/cases";
+import { flushCases, money, unwrap } from "@/lib/cases";
 import { useAuth } from "@/components/auth/provider";
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import type { RentalCase } from "@/types/case";
 
 export function Landing() {
-  const { session } = useAuth();
-  const [recent, setRecent] = useState<RentalCase | null>(null);
-  const [error, setError] = useState("");
+  const ownerId = useAuth().session?.user.id;
+  const [workspace, setWorkspace] = useState<{
+    ownerId: string;
+    cases: RentalCase[];
+    error: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const current = workspace?.ownerId === ownerId ? workspace : null;
   useEffect(() => {
+    if (!ownerId) return;
     let active = true;
-    void Promise.resolve().then(async () => {
-      if (!active) return;
+    async function loadCases(userId: string) {
       try {
-        if (!session) {
-          setRecent(null);
-          return;
-        }
-        const result = await getBackend().data.getMostRecentCase();
-        if (result.error) throw new Error(result.error.message);
-        if (active) setRecent(result.data ? fromRow(result.data) : null);
+        const cases = unwrap(await getBackend().data.listCases()).map(fromRow);
+        if (active) setWorkspace({ ownerId: userId, cases, error: "" });
       } catch {
-        setError(
-          "We couldn’t load your saved case. You can still start a case or explore the demo.",
-        );
+        if (active) setWorkspace({ ownerId: userId, cases: [], error: "We couldn’t load your saved cases." });
       }
-    });
+    }
+    void loadCases(ownerId);
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [ownerId]);
+
+  async function removeCase(id: string, name: string) {
+    if (!current || deleting || !window.confirm(`Delete “${name}” and its saved files? This can’t be undone.`)) return;
+    setDeleting(id);
+    setWorkspace({ ...current, error: "" });
+    try {
+      await flushCases();
+      const result = await getBackend().data.deleteCase(id);
+      if (result.error && result.error.code !== "not_found") unwrap(result);
+      setWorkspace((value) => value?.ownerId === current.ownerId
+        ? { ...value, cases: value.cases.filter((saved) => saved.id !== id) }
+        : value);
+    } catch (error) {
+      setWorkspace((value) => value?.ownerId === current.ownerId
+        ? { ...value, error: error instanceof Error ? error.message : "We couldn’t delete this case. Try again." }
+        : value);
+    } finally {
+      setDeleting(null);
+    }
+  }
   return (
     <Shell>
       <div className="landing-heading">
@@ -190,41 +209,52 @@ export function Landing() {
             </Link>
           </Button>
         </div>
-        {error && (
+        {current?.error && (
           <p role="alert" className="notice">
-            {error}
+            {current.error}
           </p>
         )}
-        {recent ? (
-          <Link
-            className="recent-case-card"
-            href={
-              recent.audited
-                ? `/case/${recent.id}`
-                : `/case/new?edit=${recent.id}`
-            }
-          >
-            <span className="journey-icon">
-              <FolderOpen size={25} aria-hidden="true" />
-            </span>
-            <div>
-              <strong>{recent.address || "Your draft case"}</strong>
-              <span className="small muted">
-                {recent.demo
-                  ? "Example case"
-                  : hosted
-                    ? "Saved to your account"
-                    : "Saved in this browser"}{" "}
-                ·{" "}
-                {recent.audited ? "Ready to review" : "Draft in progress"} ·{" "}
-                {money(recent.deposit)} deposit
-              </span>
-            </div>
-            <span className="recent-cta">
-              Resume case
-              <ArrowRight size={18} aria-hidden="true" />
-            </span>
-          </Link>
+        {ownerId && !current ? (
+          <p role="status">Loading your saved cases…</p>
+        ) : current?.cases.length ? (
+          <ul className="workspace-case-list stack">
+            {current.cases.map((saved) => {
+              const name = saved.address || "Your draft case";
+              return (
+                <li className="workspace-case-row" key={saved.id}>
+                  <Link
+                    className="recent-case-card"
+                    href={saved.audited ? `/case/${saved.id}` : `/case/new?edit=${saved.id}`}
+                  >
+                    <span className="journey-icon">
+                      <FolderOpen size={25} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>{name}</strong>
+                      <span className="small muted">
+                        {saved.demo ? "Example case" : hosted ? "Saved to your account" : "Saved in this browser"}
+                        {" · "}
+                        {saved.audited ? "Ready to review" : "Draft in progress"} · {money(saved.deposit)} deposit
+                      </span>
+                    </div>
+                    <span className="recent-cta">
+                      Resume case
+                      <ArrowRight size={18} aria-hidden="true" />
+                    </span>
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-label={`Delete case ${name}`}
+                    disabled={deleting !== null}
+                    onClick={() => void removeCase(saved.id, name)}
+                  >
+                    {deleting === saved.id ? "Deleting…" : "Delete case"}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
         ) : (
           <div className="workspace-empty">
             <FolderOpen size={28} aria-hidden="true" />
