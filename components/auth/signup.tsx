@@ -83,10 +83,19 @@ export function Signup() {
     router.push(`/check-email?flow=${r.data?.flow_id}`);
   }
   const login = `/login${search.get("returnTo") ? `?returnTo=${encodeURIComponent(search.get("returnTo")!)}` : ""}`;
+  const startingCase = search.get("returnTo") === "/case/new";
   return (
     <AuthFrame
-      title="A place for your case."
-      description="Create an account to keep your evidence and next steps together."
+      title={
+        startingCase
+          ? "Create an account to start your case."
+          : "A place for your case."
+      }
+      description={
+        startingCase
+          ? "Your account keeps your case and evidence together. Once it’s ready, you’ll continue to case setup."
+          : "Create an account to keep your evidence and next steps together."
+      }
     >
       <OAuthButton returnTo={search.get("returnTo")} />
       <form

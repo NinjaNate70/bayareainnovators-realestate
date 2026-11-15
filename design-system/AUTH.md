@@ -34,10 +34,11 @@ product-wide direction. Onboarding ends in a case, not a tutorial or dashboard.
 
 ## Access and routing
 
-An account and verified email are required for every /case/* path and /account,
-including /case/demo. No guest CTA or route bypass. Landing stays public:
-primary "Start your case" -> /signup; header "Sign in" -> /login.
-A public example preview may stay on Landing, but opening its case requires login.
+An account and verified email are required for private case paths and /account.
+Landing and the Cedar Street example at /case/demo are public.
+On Landing, the primary "Start your case" and workspace "New case" -> /case/new; header
+"Sign in" -> /login. If signed out, starting a case opens sign-in with a
+case-specific explanation and a create-account link that keeps the same return path.
 
 Auth provider states: initializing, signed_out, pending_verification, signed_in,
 recovery_only, expired, storage_error. Show a protected-route placeholder while
@@ -67,11 +68,15 @@ combination always gets the same sign-in failure. Signed-in verified users visit
 
 ```mermaid
 flowchart LR
-  L[Landing] --> S[Sign up]
+  L[Start your case or New case] --> G{Signed in?}
+  G -->|Yes| N[New case intake]
+  G -->|No| I[Sign in to start your case]
+  I -->|Existing account| N
+  I -->|Create an account| S[Sign up]
   S --> C[Check your email]
   C --> V[Open one-time link and confirm]
   V --> E[Email verified]
-  E --> N[New case or permitted return path]
+  E --> N
 ```
 
 ```mermaid
@@ -101,8 +106,9 @@ flowchart LR
   U -->|No| O[Open other user's own case; retain original draft]
 ```
 
-Readable equivalents: Landing -> signup -> check email -> verify -> case;
-login -> recent case/new case; forgot -> confirmation -> reset -> login;
+Readable equivalents: Landing -> new case intake (sign in or create and verify an
+account first if needed); standalone login -> recent case/new case;
+forgot -> confirmation -> reset -> login;
 expiry -> checkpoint -> login -> same-owner restoration.
 
 ## Shared responsive frame and form contract

@@ -124,6 +124,36 @@ async function expire(page: Page) {
     });
   });
 }
+test("Start your case opens intake across sign-in and screen sizes", async ({
+  page,
+}) => {
+  const expectNavigation = expect.configure({ timeout: 20_000 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("link", { name: "Start your case" }).click();
+  await expectNavigation(page).toHaveURL(/\/login\?returnTo=%2Fcase%2Fnew$/i);
+  await expectNavigation(
+    page.getByRole("heading", { name: "Sign in to start your case." }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await expectNavigation(page).toHaveURL(/\/signup\?returnTo=%2Fcase%2Fnew$/i);
+  await expectNavigation(
+    page.getByRole("heading", { name: "Create an account to start your case." }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
+  await page.getByText("Development demo account", { exact: true }).click();
+  await page.getByRole("button", { name: "Use demo account" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const firstStep = page.getByRole("heading", {
+    name: "Start with the deduction letter",
+  });
+  await expectNavigation(firstStep).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("link", { name: "Save & exit" }).click();
+  await page.getByRole("link", { name: "Start your case" }).click();
+  await expectNavigation(firstStep).toBeVisible();
+});
 test("signup, verify, case/photo persistence, expiry recovery, and account isolation", async ({
   page,
 }) => {

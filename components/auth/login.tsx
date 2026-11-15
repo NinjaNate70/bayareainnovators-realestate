@@ -52,8 +52,16 @@ export function Login() {
     form.setValues({ email: form.values.email });
   }
   const signup = `/signup${search.get("returnTo") ? `?returnTo=${encodeURIComponent(search.get("returnTo")!)}` : ""}`;
+  const startingCase = search.get("returnTo") === "/case/new";
   return (
-    <AuthFrame title="Welcome back." description="Pick up where you left off.">
+    <AuthFrame
+      title={startingCase ? "Sign in to start your case." : "Welcome back."}
+      description={
+        startingCase
+          ? "Sign in or create an account to save your case and evidence. You’ll start with your deduction letter or enter the details yourself."
+          : "Pick up where you left off."
+      }
+    >
       <OAuthButton returnTo={search.get("returnTo")} />
       {search.get("error") === "oauth" && (
         <p className="notice" role="alert">
