@@ -168,14 +168,6 @@ Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
 
 The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Anthropic for each answer, and to Google only if Gemini stands in; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
-## Draft letters and email replies
-
-For hosted cases (`NEXT_PUBLIC_BACKEND=supabase`), run the [case correspondence migration](supabase/migrations/20261115000400_case_correspondence.sql) after the case workspace migration. It gives each renter a private email history for each case. The browser demo still offers its editable templates.
-
-1. Open a case's **Letter** or **Replies** tab. Paste a received or previously sent email into **Add an email to the history**. Add its date if you're importing an older exchange. If a case has an older draft, save it into the history before generating a new version.
-2. Enter what you want the next message to accomplish, consent to the analysis, then choose **Draft a letter** or **Draft a reply**. The server reads saved case details, current audit findings, selected PDF/JPEG/PNG evidence (up to four files and 6 MB total), and recent received or sent emails. It excludes unsent drafts from the thread. The newest 16 messages provide context, including the latest received email. Claude drafts and reviews in separate calls, with Gemini available as a fallback using the existing `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` settings.
-3. Review the sources, edit the recipient, subject, and body, then check the review box. **Open in email app** prepares a new editable message. To reply in the existing email thread, use **Copy for email** and paste it into the thread's Reply box. After sending in your email app, use **Record as sent** to include your response in the next draft's context.
-
 ## Run a live move-out audit
 
 The audit queues one selected photo pair per room when it starts. One Gemini pass assesses the room's condition and a second pass independently checks the same photos. The audit saves both findings. If the passes disagree or a photo is unclear, the room shows **Needs review**. Other rooms keep running while you capture a replacement photo and confirm the new pair. The audit keeps progress in Supabase and workers can continue after the renter closes the browser.
