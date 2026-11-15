@@ -81,6 +81,14 @@
 .account-case-list span { flex:1; min-width:0; overflow-wrap:anywhere; }
 .account-case-list small { display:block; color:var(--muted); margin-top:4px; }
 .auth-mobile-header .brand-lockup,.auth-brand { min-height:44px; }
+.account-settings-grid { display:grid; gap:24px; }
+.account-settings-grid .card h2 { font-size:22px; display:flex; align-items:center; gap:8px; }
+.account-settings-grid .card .auth-submit { width:auto; justify-self:start; }
+.account-settings-grid .auth-trust { margin-top:16px; }
+.save-message { font-size:14px; color:var(--green); margin:0; }
+.break-text { overflow-wrap:anywhere; }
+.auth-error.notice { border:2px solid var(--navy); background:white; }
+@media(min-width:1200px) { .account-settings-grid { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); align-items:start; } }
 @media(min-width:1024px) { .mobile-account { display:none; } }
 .protected-screen { max-width:560px; min-height:70dvh; margin:auto; padding:64px 24px; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; gap:16px; }
 .protected-screen h1 { font-size:28px; }
