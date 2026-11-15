@@ -16,6 +16,7 @@ const input = {
   files: [
     { id: 'L1', kind: 'letter', name: 'letter.pdf', mime: 'application/pdf', data: 'UERG' },
     { id: 'L2', kind: 'lease', name: 'lease.png', mime: 'image/png', data: 'TEVBU0U=' },
+    { id: 'D1', kind: 'other', name: 'move-in checklist.pdf', mime: 'application/pdf', data: 'Q0hFQ0s=' },
     { id: 'P1', kind: 'before', name: 'bedroom in.jpg', mime: 'image/jpeg', data: 'QkVGT1JF' },
     { id: 'P2', kind: 'after', name: 'bedroom out.jpg', mime: 'image/jpeg', data: 'QUZURVI=' },
   ],
@@ -87,7 +88,7 @@ test('Claude reads the documents, Gemini the photos, and the auditor sees both',
     return gemini(role(body) === 'photos' ? seen : verdict);
   } });
   assert.equal(result.documents_read_by, 'claude');
-  assert.deepEqual([result.documents_read, result.photos_read], [2, 2]);
+  assert.deepEqual([result.documents_read, result.photos_read], [3, 2]);
   assert.deepEqual(result.charges.map((c) => [c.id, c.verdict, c.high]), [['C1', 'not-allowed', 400], ['C2', 'disputable', 150.5], ['C3', 'info', 0]]);
 
   const docs = calls.find((call) => call.url.includes('anthropic.com'));
@@ -97,6 +98,11 @@ test('Claude reads the documents, Gemini the photos, and the auditor sees both',
   assert.deepEqual(sent.find((part) => part.type === 'document').source, { type: 'base64', media_type: 'application/pdf', data: 'UERG' });
   assert.deepEqual(sent.find((part) => part.type === 'image').source, { type: 'base64', media_type: 'image/png', data: 'TEVBU0U=' });
   assert.equal(sent[sent.findIndex((part) => part.type === 'document') - 1].text, 'File L1 (letter): letter.pdf');
+  // A document the renter added to help the case is read with the letter and lease.
+  const extra = sent.findIndex((part) => part.source?.data === 'Q0hFQ0s=');
+  assert.equal(sent[extra - 1].text, 'File D1 (supporting document): move-in checklist.pdf');
+  assert.match(docs.body.system, /supporting documents the renter added/);
+  assert.ok(docs.body.output_config.format.schema.required.includes('supporting_documents'));
   // Nullable and nested fields are closed off the way structured outputs require.
   const item = docs.body.output_config.format.schema.properties.charges.items;
   assert.equal(item.additionalProperties, false);
@@ -144,7 +150,7 @@ test('a case with no files is audited without the readers and stays open', async
   let n = 0;
   const result = await runCaseAudit({ ...keys, input: { ...input, files: [], photoPairs: {} }, fetch: async (url, init) => {
     n += 1;
-    assert.match(JSON.parse(init.body).contents[0].parts[0].text, /No deduction letter or lease was uploaded/);
+    assert.match(JSON.parse(init.body).contents[0].parts[0].text, /No deduction letter, lease or supporting document was uploaded/);
     return gemini(verdict);
   } });
   assert.equal(n, 1);
@@ -191,7 +197,7 @@ test('Claude examines the photos and audits when Gemini stays overloaded', async
   assert.deepEqual(claudeJobs.sort(), ['auditor', 'documents', 'photos']);
   // Photos and auditor each tried Gemini twice before handing over.
   assert.equal(geminiCalls, 4);
-  assert.deepEqual([result.documents_read, result.photos_read], [2, 2]);
+  assert.deepEqual([result.documents_read, result.photos_read], [3, 2]);
   assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
 });
 
@@ -203,4 +209,28 @@ test('an estimate needs audited findings', () => {
   const estimate = estimateRecovery({ ...base, charges: audited });
   assert.deepEqual([estimate.low, estimate.high, estimate.included.length], [400, 550.5, 2]);
   assert.equal(estimateRecovery({ ...base, stale: true, charges: audited }), null);
+});
+
+test('a supporting document can back a finding, and its facts reach the auditor', async () => {
+  const withSupport = { ...reading, supporting_documents: [{ file_id: 'D1', what_it_is: 'Move-in checklist', dated: '2025-09-01', relevant_facts: 'Notes "scuffs on bedroom walls" at move-in.' }] };
+  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (String(url).includes('anthropic.com')) return claude(withSupport);
+    if (role(body) === 'photos') return gemini(seen);
+    assert.match(body.contents[0].parts[0].text, /scuffs on bedroom walls/);
+    assert.match(body.systemInstruction.parts[0].text, /move-in checklist or dated message/);
+    return gemini({ charges: [{ charge_id: 'C1', status: 'disputable', reason: 'Your move-in checklist already notes scuffs on the bedroom walls.', evidence_ids: ['D1'], guide_sections: ['G6'], requests: [] }] });
+  } });
+  assert.deepEqual([result.charges[0].verdict, result.charges[0].sources], ['disputable', ['G6', 'D1']]);
+});
+
+test('with the document reader down, a supporting document cannot back a finding', async () => {
+  const result = await runCaseAudit({ ...keys, claudeKey: undefined, input, fetch: async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.contents[0].parts.some((part) => part.inline_data?.mime_type === 'application/pdf')) return new Response('down', { status: 500 });
+    if (role(body) === 'photos') return gemini(seen);
+    return gemini({ charges: [{ charge_id: 'C1', status: 'disputable', reason: 'The checklist notes scuffs.', evidence_ids: ['D1'], guide_sections: ['G6'], requests: [] }] });
+  } });
+  assert.equal(result.documents_read, 0);
+  assert.equal(result.charges[0].verdict, 'info');
 });

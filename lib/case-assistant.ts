@@ -125,6 +125,7 @@ export function summarizeCase(row: CaseRecord | null, today: string) {
     files: evidence.slice(0, 40).map((file) => ({ name: clip(file.name, 120), kind: clip(file.kind, 20) })),
     has_deduction_letter: evidence.some((file) => file.kind === 'letter'),
     has_lease: evidence.some((file) => file.kind === 'lease'),
+    supporting_documents: evidence.filter((file) => file.kind === 'other').length,
     move_in_photos: evidence.filter((file) => file.kind === 'before').length,
     move_out_photos: evidence.filter((file) => file.kind === 'after').length,
     demand_letter_draft: clip(row.letter_text, 1500),

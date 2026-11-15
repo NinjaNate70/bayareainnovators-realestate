@@ -13,10 +13,10 @@ const respond = (error: string, status: number, code = 'audit_failed') =>
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const day = /^\d{4}-\d{2}-\d{2}$/;
-const kinds = ['letter', 'lease', 'before', 'after'] as const;
+const kinds = ['letter', 'lease', 'other', 'before', 'after'] as const;
 const mimes = ['application/pdf', 'image/png', 'image/jpeg'];
 // What one audit sends to each model: a few files, within the models' inline limits.
-const limits = { documents: { count: 4, bytes: 12 * 1024 * 1024 }, photos: { count: 8, bytes: 12 * 1024 * 1024 } };
+const limits = { documents: { count: 10, bytes: 12 * 1024 * 1024 }, photos: { count: 8, bytes: 12 * 1024 * 1024 } };
 
 // An audit makes several model calls with files attached, so it is rationed
 // more tightly than chat. Per server instance: it limits bursts.
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     const id = file.source_id!;
     const name = String(file.name ?? id).slice(0, 160);
     const kind = file.kind as AuditFile['kind'];
-    const group = kind === 'letter' || kind === 'lease' ? 'documents' : 'photos';
+    const group = kind === 'before' || kind === 'after' ? 'photos' : 'documents';
     const skip = (reason: string) => skipped.push({ id, name, reason });
     if (!file.path || (file.bucket !== 'documents' && file.bucket !== 'photos') || !file.path.startsWith(`${userId}/${caseId}/`)) {
       skip('the original file is not stored with this case. Add it again.');

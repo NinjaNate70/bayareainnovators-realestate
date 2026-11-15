@@ -504,6 +504,19 @@ export function CaseWizard() {
                       onAdd={addFile}
                       onRemove={removeFile}
                     />
+                    <UploadZone
+                      title="More documents that help your case (optional)"
+                      note={
+                        hosted
+                          ? "Receipts, your move-in checklist, emails or texts with your landlord, repair invoices, cleaning receipts. The audit reads these alongside your letter and lease."
+                          : "Receipts, your move-in checklist, emails or texts with your landlord, repair invoices, cleaning receipts."
+                      }
+                      caseId={data.id}
+                      kind="other"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
                     <label className="checkbox-row">
                       <input
                         type="checkbox"
