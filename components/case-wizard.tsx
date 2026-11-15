@@ -26,6 +26,7 @@ import {
 } from "@/lib/cases";
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
+import { notesUnavailable } from "@/lib/db/supabase";
 import { unwrap } from "@/lib/cases";
 import { plural } from "@/lib/neutral-copy";
 import { MoneyInput } from "@/components/money-input";
@@ -137,6 +138,7 @@ export function CaseWizard() {
         "returned",
         "charges",
         "evidence",
+        "notes",
       ].includes(key),
     );
     setData((d) => {
@@ -517,6 +519,19 @@ export function CaseWizard() {
                       onAdd={addFile}
                       onRemove={removeFile}
                     />
+                    <UploadZone
+                      title="More documents that help your case (optional)"
+                      note={
+                        hosted
+                          ? "Receipts, your move-in checklist, emails or texts with your landlord, repair invoices, cleaning receipts. The audit reads these alongside your letter and lease."
+                          : "Receipts, your move-in checklist, emails or texts with your landlord, repair invoices, cleaning receipts."
+                      }
+                      caseId={data.id}
+                      kind="other"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
                     <label className="checkbox-row">
                       <input
                         type="checkbox"
@@ -729,6 +744,39 @@ export function CaseWizard() {
                         Add charge
                       </Button>
                     </div>
+                    <label className="field-full notes-field" htmlFor="situation">
+                      <span className="field-label">
+                        Anything else about your situation? (optional)
+                      </span>
+                      <span id="situation-hint" className="small muted">
+                        Explain what the documents don’t show. For example:
+                        roommates and who paid the deposit, anything you agreed
+                        with your landlord, repairs you asked for, or the
+                        condition at move-in.
+                        {hosted
+                          ? " The audit and the assistant take this into account as your own account of events."
+                          : ""}
+                      </span>
+                      <textarea
+                        id="situation"
+                        rows={5}
+                        maxLength={4000}
+                        aria-describedby="situation-hint situation-count"
+                        value={data.notes ?? ""}
+                        onChange={(e) => patch({ notes: e.target.value })}
+                      />
+                      <span id="situation-count" className="small muted">
+                        {(data.notes ?? "").length.toLocaleString()} of 4,000
+                        characters
+                      </span>
+                      {hosted && !!data.notes && notesUnavailable() && (
+                        <span className="inline-error" role="status">
+                          These notes can’t be saved yet. Your project admin
+                          needs to run the case situation migration in Supabase.
+                          The rest of your case is saved.
+                        </span>
+                      )}
+                    </label>
                   </div>
                 )}
                 {step === 2 && (
@@ -790,6 +838,20 @@ export function CaseWizard() {
                       </div>
                       <FileCheck2 size={24} aria-hidden="true" />
                     </div>
+                    {!!data.notes?.trim() && (
+                      <div className="review-item split-row">
+                        <div>
+                          <strong>Your notes</strong>
+                          <p className="small muted break-text">
+                            {data.notes.trim().slice(0, 240)}
+                            {data.notes.trim().length > 240 ? "…" : ""}
+                          </p>
+                        </div>
+                        <Button variant="ghost" onClick={() => navigate(1)}>
+                          Edit notes
+                        </Button>
+                      </div>
+                    )}
                     <div className="review-item">
                       <strong>{plural(data.evidence.length, "evidence file")}</strong>
                       <ul>
@@ -813,7 +875,7 @@ export function CaseWizard() {
                           : !data.charges.length
                             ? "No itemized charges were entered, so there is no charge-by-charge audit. Your case will be saved with your documents and photos, and you can add charges later if your landlord sends a list. The result is information, not legal advice."
                             : hosted
-                            ? "Our system reads your documents and evidence to build your audit, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
+                            ? "Our system reads your deduction letter, lease, other documents, photos and case details to build your audit, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>

@@ -73,146 +73,118 @@ const claude = (value, extra = {}) => new Response(JSON.stringify({
   content: [{ type: 'text', text: JSON.stringify(value) }],
   stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, ...extra,
 }), { headers: { 'content-type': 'application/json' } });
+const down = (status) => new Response('{}', { status, headers: { 'content-type': 'application/json' } });
+const onClaude = (url) => String(url).includes('anthropic.com');
+const draft = { agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] };
+const approve = { approved: true, answer: '', guide_sections: ['G3'], note: '' };
+// A Claude request is a review when its instructions say so; otherwise it is the draft.
+const isReview = (body) => /independent reviewer/.test(body.system ?? body.systemInstruction.parts[0].text);
 const options = (fetch, extra = {}) => ({
   request: parseAssistantRequest({ message: 'How long does my landlord have?', caseId, page: 'audit' }),
   caseRow: row, today: '2026-11-15', geminiKey: 'g-key', geminiModel: 'gemini-test',
   claudeKey: 'c-key', claudeModel: 'claude-test', retryDelay: 0, fetch, ...extra,
 });
 
-test('Gemini answers as the chosen specialist and Claude reviews', async () => {
+test('Claude drafts as the chosen specialist and reviews in a separate request', async () => {
   const calls = [];
   const reply = await runAssistant(options(async (url, init) => {
     const body = JSON.parse(init.body);
     calls.push({ url: String(url), headers: new Headers(init.headers), body });
-    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
-    return gemini({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] });
+    return claude(isReview(body) ? approve : draft);
   }));
   assert.deepEqual(reply, {
     reply: 'They have 21 days.', agent: 'rules', agent_label: 'Deposit rules', reviewed_by: 'claude', revised: false,
     sources: [{ id: 'G3', title: 'The 21-day deadline' }],
   });
+  // Two requests, both to Claude; Gemini is not called when Claude answers.
   assert.equal(calls.length, 2);
-  assert.match(calls[0].url, /models\/gemini-test:generateContent$/);
-  assert.equal(calls[0].headers.get('x-goog-api-key'), 'g-key');
-  assert.match(calls[1].url, /api\.anthropic\.com\/v1\/messages/);
-  assert.equal(calls[1].headers.get('authorization'), 'Bearer c-key');
-  assert.equal(calls[1].body.model, 'claude-test');
-  // Low effort, a closed JSON schema, and Anthropic's refusal fallback.
-  assert.equal(calls[1].body.output_config.effort, 'low');
-  assert.equal(calls[1].body.output_config.format.type, 'json_schema');
-  assert.equal(calls[1].body.output_config.format.schema.additionalProperties, false);
-  assert.deepEqual(calls[1].body.output_config.format.schema.required, ['approved', 'answer', 'guide_sections', 'note']);
-  assert.equal(calls[1].body.fallbacks, 'default');
-  assert.match(calls[1].headers.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
+  assert.ok(calls.every((call) => /api\.anthropic\.com\/v1\/messages/.test(call.url)));
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer c-key');
+  assert.equal(calls[0].body.model, 'claude-test');
+  assert.equal(calls[0].body.output_config.format.type, 'json_schema');
+  assert.equal(calls[0].body.output_config.format.schema.additionalProperties, false);
+  assert.equal(calls[0].body.fallbacks, 'default');
+  assert.match(calls[0].headers.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
   // The specialist and the reviewer both get the guide and the case facts.
-  const specialist = calls[0].body.systemInstruction.parts[0].text;
-  assert.ok(depositGuide.every((section) => specialist.includes(`[${section.id}]`)));
-  assert.match(calls[0].body.contents[0].parts[0].text, /"twenty_one_days_after_move_out":"2026-11-21"/);
+  assert.ok(depositGuide.every((section) => calls[0].body.system.includes(`[${section.id}]`)));
+  assert.match(calls[0].body.messages[0].content[0].text, /"twenty_one_days_after_move_out":"2026-11-21"/);
+  assert.deepEqual(calls[1].body.output_config.format.schema.required, ['approved', 'answer', 'guide_sections', 'note']);
   assert.match(calls[1].body.messages[0].content[0].text, /Draft answer from the Deposit rules:\nThey have 21 days\./);
   // No key ever appears in a prompt.
   assert.ok(!JSON.stringify(calls.map((call) => call.body)).includes('-key'));
 });
 
 test('a rejected draft is replaced by the reviewer’s correction', async () => {
-  const reply = await runAssistant(options(async (url) => {
-    if (String(url).includes('anthropic.com')) return claude({ approved: false, answer: 'The guide does not cover that.', guide_sections: [], note: 'Removed an unsupported rule.' });
-    return gemini({ agent: 'rules', answer: 'You will win triple damages.', guide_sections: ['G9'] });
-  }));
+  const reply = await runAssistant(options(async (url, init) => claude(isReview(JSON.parse(init.body))
+    ? { approved: false, answer: 'The guide does not cover that.', guide_sections: [], note: 'Removed an unsupported rule.' }
+    : { agent: 'rules', answer: 'You will win triple damages.', guide_sections: ['G9'] })));
   assert.equal(reply.reply, 'The guide does not cover that.');
   assert.equal(reply.revised, true);
   assert.deepEqual(reply.sources, []);
 });
 
-test('Gemini reviews when Claude is missing or failing', async () => {
-  for (const extra of [{ claudeKey: undefined }, {}]) {
-    let n = 0;
-    const urls = [];
-    const reply = await runAssistant(options(async (url) => {
-      urls.push(String(url));
-      if (String(url).includes('anthropic.com')) return new Response('nope', { status: 500 });
-      n += 1;
-      if (n === 1) return gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
-      return gemini({ approved: true, answer: '', guide_sections: [], note: '' });
-    }, extra));
-    assert.equal(reply.reviewed_by, 'gemini');
-    assert.equal(reply.reply, 'Open the Letter tab.');
-    assert.equal(urls.filter((url) => url.includes('anthropic.com')).length, extra.claudeKey === undefined && 'claudeKey' in extra ? 0 : 1);
+test('it runs on Claude alone, with no Gemini key', async () => {
+  const urls = [];
+  const reply = await runAssistant(options(async (url, init) => {
+    urls.push(String(url));
+    return claude(isReview(JSON.parse(init.body)) ? approve : draft);
+  }, { geminiKey: undefined }));
+  assert.equal(reply.reviewed_by, 'claude');
+  assert.ok(urls.every((url) => url.includes('anthropic.com')));
+  // With no stand-in, a Claude failure is reported as it is.
+  await assert.rejects(runAssistant(options(async () => down(529), { geminiKey: undefined })), /^Error: Claude request failed \(529\)\.$/);
+});
+
+test('Gemini stands in for a step Claude fails, a refusal and a cut-off answer included', async () => {
+  for (const failing of [() => down(529), () => claude(approve, { stop_reason: 'refusal', content: [] }), () => claude(approve, { stop_reason: 'max_tokens' })]) {
+    // Claude drafts, then fails the review.
+    let geminiCalls = 0;
+    const reply = await runAssistant(options(async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (onClaude(url)) return isReview(body) ? failing() : claude(draft);
+      geminiCalls += 1;
+      return gemini(approve);
+    }));
+    assert.deepEqual([reply.reply, reply.reviewed_by, geminiCalls], ['They have 21 days.', 'gemini', 1]);
   }
-});
-
-test('an unreviewed draft is never returned', async () => {
-  let n = 0;
-  await assert.rejects(runAssistant(options(async (url) => {
-    if (String(url).includes('anthropic.com')) return new Response('down', { status: 503 });
-    n += 1;
-    if (n === 1) return gemini({ agent: 'steps', answer: 'Draft.', guide_sections: [] });
-    return new Response('down', { status: 503 });
-  })), /Gemini request failed \(503\)/);
-});
-
-test('a busy Gemini model is retried, then Claude drafts and reviews', async () => {
-  let geminiCalls = 0;
-  const retried = await runAssistant(options(async (url) => {
-    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' });
-    geminiCalls += 1;
-    return geminiCalls === 1 ? new Response('overloaded', { status: 503 }) : gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
+  // Claude is down entirely: Gemini drafts and reviews.
+  const reply = await runAssistant(options(async (url, init) => {
+    if (onClaude(url)) return down(500);
+    return gemini(isReview(JSON.parse(init.body)) ? approve : draft);
   }));
-  assert.equal(geminiCalls, 2);
-  assert.equal(retried.reply, 'Open the Letter tab.');
-
-  const claudePrompts = [];
-  const covered = await runAssistant(options(async (url, init) => {
-    if (!String(url).includes('anthropic.com')) return new Response('overloaded', { status: 503 });
-    claudePrompts.push(JSON.parse(init.body).system);
-    return claudePrompts.length === 1
-      ? claude({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] })
-      : claude({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
-  }));
-  assert.deepEqual([covered.reply, covered.agent, covered.reviewed_by], ['They have 21 days.', 'rules', 'claude']);
-  assert.match(claudePrompts[0], /First choose the one specialist/);
-  assert.match(claudePrompts[1], /independent reviewer/);
+  assert.deepEqual([reply.agent, reply.reviewed_by], ['rules', 'gemini']);
+  // Gemini works alone too, when only its key is set.
+  const alone = await runAssistant(options(async (url, init) => {
+    assert.ok(!onClaude(url));
+    return gemini(isReview(JSON.parse(init.body)) ? approve : draft);
+  }, { claudeKey: undefined }));
+  assert.equal(alone.reviewed_by, 'gemini');
 });
 
-test('with both services down the error names each one', async () => {
-  await assert.rejects(runAssistant(options(async (url) => new Response('down', { status: String(url).includes('anthropic.com') ? 429 : 503 }))),
-    { name: 'AiServiceError', message: 'Gemini request failed (503); Claude request failed (429).' });
-  // Claude drafted, then the review failed on both.
-  let n = 0;
-  await assert.rejects(runAssistant(options(async (url) => {
-    if (!String(url).includes('anthropic.com')) return new Response('down', { status: 503 });
-    n += 1;
-    return n === 1 ? claude({ agent: 'steps', answer: 'Draft.', guide_sections: [] }) : new Response('no credit', { status: 429 });
-  })), { message: 'Claude request failed (429); Gemini request failed (503).' });
-  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }), { claudeKey: undefined })), /Gemini request failed \(503\)/);
+test('an unreviewed draft is never returned, and the error names each service', async () => {
+  await assert.rejects(runAssistant(options(async (url, init) => {
+    if (onClaude(url)) return isReview(JSON.parse(init.body)) ? down(429) : claude(draft);
+    return down(503);
+  })), { name: 'AiServiceError', message: 'Claude request failed (429); Gemini request failed (503).' });
+  await assert.rejects(runAssistant(options(async (url) => down(onClaude(url) ? 401 : 503))),
+    { message: 'Claude request failed (401); Gemini request failed (503).' });
+  await assert.rejects(runAssistant(options(async () => down(503), { geminiKey: undefined, claudeKey: undefined })), /No AI service is configured/);
 });
 
-test('asks Gemini for light thinking, and drops the setting for a model that rejects it', async () => {
+test('the Gemini stand-in retries a busy model and drops a setting the model rejects', async () => {
   const sent = [];
+  let busy = true;
   const fetch = async (url, init) => {
-    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' });
-    const config = JSON.parse(init.body).generationConfig;
+    if (onClaude(url)) return down(500);
+    const body = JSON.parse(init.body);
+    const config = body.generationConfig;
     sent.push(config.thinkingConfig?.thinkingLevel ?? 'none');
     if (config.thinkingConfig) return new Response('unknown field', { status: 400 });
-    return gemini({ agent: 'steps', answer: 'Ok.', guide_sections: [] });
+    if (busy) { busy = false; return new Response('overloaded', { status: 503 }); }
+    return gemini(isReview(body) ? approve : draft);
   };
-  const model = { geminiModel: 'gemini-no-levels' };
-  assert.equal((await runAssistant(options(fetch, model))).reply, 'Ok.');
-  assert.equal((await runAssistant(options(fetch, model))).reply, 'Ok.');
-  // Tried once, then remembered for that model.
-  assert.deepEqual(sent, ['low', 'none', 'none']);
-});
-
-test('a Claude refusal or a cut-off answer is treated as a failed review', async () => {
-  for (const extra of [{ stop_reason: 'refusal', content: [] }, { stop_reason: 'max_tokens' }]) {
-    let geminiCalls = 0;
-    const reply = await runAssistant(options(async (url) => {
-      if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' }, extra);
-      geminiCalls += 1;
-      return geminiCalls === 1
-        ? gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] })
-        : gemini({ approved: true, answer: '', guide_sections: [], note: '' });
-    }));
-    // Gemini reviewed instead, so the answer is still a reviewed one.
-    assert.deepEqual([reply.reviewed_by, geminiCalls], ['gemini', 2]);
-  }
+  const reply = await runAssistant(options(fetch, { geminiModel: 'gemini-no-levels' }));
+  assert.equal(reply.reply, 'They have 21 days.');
+  // Light thinking tried once and remembered as unsupported; one 503 retried.
+  assert.deepEqual(sent, ['low', 'none', 'none', 'none']);
 });

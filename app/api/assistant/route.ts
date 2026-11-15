@@ -24,7 +24,8 @@ function allow(userId: string) {
   return true;
 }
 
-const caseColumns = 'address, renter_name, landlord_name, move_out_date, letter_received_date, deposit_cents, returned_cents, completed_step, audited, letter_text, reply_by_date, incoming_text, reply_text, charges, evidence';
+// Every column, so a project without the newer notes column still works.
+const caseColumns = '*';
 
 // Names the service and status only (for example "Gemini request failed (404)"),
 // so a setup problem can be told apart from a slow answer. Never includes keys.
@@ -41,8 +42,10 @@ function failure(error: unknown) {
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // Claude answers. Gemini is optional and only stands in if Claude fails.
+  const claudeKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (!url || !publishableKey || !geminiKey) {
+  if (!url || !publishableKey || (!claudeKey && !geminiKey)) {
     return respond('The case assistant is unavailable. Ask your project admin to finish the setup.', 503);
   }
 
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
       today: new Date().toISOString().slice(0, 10),
       geminiKey,
       geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      claudeKey: process.env.ANTHROPIC_API_KEY,
+      claudeKey,
       claudeModel: process.env.ANTHROPIC_MODEL || defaultClaudeModel,
     });
     return Response.json(reply, { headers: { 'Cache-Control': 'no-store' } });

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import {
   Copy,
   Download,
@@ -7,6 +8,7 @@ import {
   LoaderCircle,
   Printer,
   BookOpen,
+  FilePlus2,
 } from "lucide-react";
 import type { RentalCase } from "@/types/case";
 import { Card } from "@/components/ui/card";
@@ -217,6 +219,14 @@ export function LetterTab({
         {status}
       </p>
       <ActionBar>
+        {!data.demo && (
+          <Button asChild variant="outline">
+            <Link href={`/case/new?edit=${data.id}&step=letter`}>
+              <FilePlus2 size={18} aria-hidden="true" />
+              Add more documents
+            </Link>
+          </Button>
+        )}
         {data.letter ? (
           <Button onClick={download}>
             <Download size={18} aria-hidden="true" />

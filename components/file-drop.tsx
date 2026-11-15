@@ -11,6 +11,7 @@ export function FileDrop({
   multiple = false,
   capture,
   prompt = "Drop files here or browse",
+  description,
   hint,
   note,
   disabled = false,
@@ -22,6 +23,8 @@ export function FileDrop({
   multiple?: boolean;
   capture?: "environment" | "user";
   prompt?: string;
+  // An optional line under the label saying what belongs here.
+  description?: string;
   // What may be chosen, such as "JPG or PNG · up to 10MB each".
   hint: string;
   // An optional line under the zone, such as where the files are stored.
@@ -42,6 +45,11 @@ export function FileDrop({
       <label className="field-label" htmlFor={id}>
         {label}
       </label>
+      {description && (
+        <p id={`${id}-description`} className="small muted">
+          {description}
+        </p>
+      )}
       <div
         className="upload-zone"
         data-over={over || undefined}
@@ -74,7 +82,9 @@ export function FileDrop({
           accept={accept}
           capture={capture}
           disabled={disabled}
-          aria-describedby={`${id}-hint`}
+          aria-describedby={
+            description ? `${id}-description ${id}-hint` : `${id}-hint`
+          }
           onChange={(e) => {
             take(e.target.files);
             e.target.value = "";

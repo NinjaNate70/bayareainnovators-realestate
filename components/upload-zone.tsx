@@ -23,6 +23,7 @@ export function UploadZone({
   onAdd,
   onRemove,
   title,
+  note,
 }: {
   caseId: string;
   kind: Evidence["kind"];
@@ -30,6 +31,8 @@ export function UploadZone({
   onAdd: (file: Evidence) => void;
   onRemove: (id: string) => void;
   title: string;
+  // Optional line under the title saying what belongs here.
+  note?: string;
 }) {
   const [error, setError] = useState("");
   // Files being stored right now. Each shows at once with an Uploading badge,
@@ -99,6 +102,7 @@ export function UploadZone({
   return (
     <FileDrop
       label={title}
+      description={note}
       multiple
       accept={
         isPhoto(kind)

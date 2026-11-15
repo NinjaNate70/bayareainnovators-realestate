@@ -14,10 +14,10 @@ const respond = (error: string, status: number, code = 'audit_failed') =>
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const day = /^\d{4}-\d{2}-\d{2}$/;
-const kinds = ['letter', 'lease', 'before', 'after'] as const;
+const kinds = ['letter', 'lease', 'other', 'before', 'after'] as const;
 const mimes = ['application/pdf', 'image/png', 'image/jpeg'];
 // What one audit sends to each model: a few files, within the models' inline limits.
-const limits = { documents: { count: 4, bytes: 12 * 1024 * 1024 }, photos: { count: 8, bytes: 12 * 1024 * 1024 } };
+const limits = { documents: { count: 10, bytes: 12 * 1024 * 1024 }, photos: { count: 8, bytes: 12 * 1024 * 1024 } };
 
 // An audit makes several model calls with files attached, so it is rationed
 // more tightly than chat. Per server instance: it limits bursts.
@@ -38,6 +38,7 @@ type StoredCase = {
   letter_received_date: string | null;
   deposit_cents: number;
   returned_cents: number;
+  situation_text?: string | null;
   charges: { source_id?: string; name?: string; room?: string; amount_cents?: number }[];
   evidence: { source_id?: string; name?: string; kind?: string; type?: string; path?: string; bucket?: string }[];
   photo_pairs: Record<string, { before?: string; after?: string }> | null;
@@ -58,10 +59,13 @@ function failure(error: unknown) {
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // Claude runs the audit. Gemini is optional and only stands in if Claude fails.
+  const claudeKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (!url || !publishableKey || !geminiKey) {
+  if (!url || !publishableKey || (!claudeKey && !geminiKey)) {
     return respond('The automated audit isn’t set up yet. Ask your project admin to finish the setup.', 503, 'setup');
   }
+  const startedAt = Date.now();
 
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
   if (!accessToken) return respond('Sign in to run the audit.', 401, 'signed_out');
@@ -88,7 +92,8 @@ export async function POST(request: Request) {
   if (!allow(userId)) return respond('An audit was just run. Wait a minute, then try again.', 429, 'rate_limited');
 
   const found = await renter.from('cases')
-    .select('address, move_out_date, letter_received_date, deposit_cents, returned_cents, charges, evidence, photo_pairs')
+    // Every column, so a project without the newer notes column still works.
+    .select('*')
     .eq('id', caseId).eq('user_id', userId).maybeSingle<StoredCase>();
   if (found.error) return respond('Could not open your case. Try again in a moment.', 503);
   if (!found.data) return respond('This case is unavailable.', 404, 'not_found');
@@ -106,26 +111,34 @@ export async function POST(request: Request) {
     .filter((file) => typeof file.source_id === 'string' && (kinds as readonly string[]).includes(String(file.kind)))
     .sort((a, b) => kinds.indexOf(a.kind as never) - kinds.indexOf(b.kind as never) || Number(paired.has(b.source_id)) - Number(paired.has(a.source_id)));
 
-  const files: AuditFile[] = [];
+  // Pick what this audit will read, then fetch those files all at once.
   const skipped: AuditInput['skipped'] = [];
   const used = { documents: { count: 0, bytes: 0 }, photos: { count: 0, bytes: 0 } };
+  const chosen: { id: string; name: string; kind: AuditFile['kind']; group: 'documents' | 'photos'; type: string; bucket: 'documents' | 'photos'; path: string }[] = [];
   for (const file of evidence) {
     const id = file.source_id!;
     const name = String(file.name ?? id).slice(0, 160);
     const kind = file.kind as AuditFile['kind'];
-    const group = kind === 'letter' || kind === 'lease' ? 'documents' : 'photos';
-    const skip = (reason: string) => skipped.push({ id, name, reason });
+    const group = kind === 'before' || kind === 'after' ? 'photos' : 'documents';
     if (!file.path || (file.bucket !== 'documents' && file.bucket !== 'photos') || !file.path.startsWith(`${userId}/${caseId}/`)) {
-      skip('the original file is not stored with this case. Add it again.');
-      continue;
+      skipped.push({ id, name, reason: 'the original file is not stored with this case. Add it again.' });
+    } else if (used[group].count >= limits[group].count) {
+      skipped.push({ id, name, reason: `only the first ${limits[group].count} ${group} are reviewed in one audit.` });
+    } else {
+      used[group].count += 1;
+      chosen.push({ id, name, kind, group, type: String(file.type), bucket: file.bucket, path: file.path });
     }
-    if (used[group].count >= limits[group].count) { skip(`only the first ${limits[group].count} ${group} are reviewed in one audit.`); continue; }
-    const download = await renter.storage.from(file.bucket).download(file.path);
+  }
+  const downloads = await Promise.all(chosen.map((file) => renter.storage.from(file.bucket).download(file.path)));
+  const files: AuditFile[] = [];
+  for (const [index, file] of chosen.entries()) {
+    const { id, name, kind, group } = file;
+    const skip = (reason: string) => skipped.push({ id, name, reason });
+    const download = downloads[index];
     if (download.error || !download.data) { skip('the file could not be opened.'); continue; }
-    const mime = mimes.includes(download.data.type) ? download.data.type : String(file.type);
+    const mime = mimes.includes(download.data.type) ? download.data.type : file.type;
     if (!mimes.includes(mime) || (group === 'photos' && mime === 'application/pdf')) { skip('this file type can’t be analyzed.'); continue; }
     if (used[group].bytes + download.data.size > limits[group].bytes) { skip('the files together are too large for one audit. Use a smaller copy.'); continue; }
-    used[group].count += 1;
     used[group].bytes += download.data.size;
     files.push({ id, kind, name, mime, data: Buffer.from(await download.data.arrayBuffer()).toString('base64') });
   }
@@ -158,13 +171,15 @@ export async function POST(request: Request) {
           letter_received_date: date(row.letter_received_date),
           deposit_paid: Math.round(row.deposit_cents) / 100,
           amount_returned: Math.round(row.returned_cents) / 100,
+          renter_account: String(row.situation_text ?? '').slice(0, 4000),
         },
         charges, files, skipped, photoPairs: pairs, inspections,
       },
       guide: [...depositGuide],
       geminiKey,
       geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      claudeKey: process.env.ANTHROPIC_API_KEY,
+      claudeKey,
+      startedAt,
       claudeModel: process.env.ANTHROPIC_MODEL || defaultClaudeModel,
     });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });

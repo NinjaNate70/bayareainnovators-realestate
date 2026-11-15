@@ -96,36 +96,50 @@ With `NEXT_PUBLIC_BACKEND=supabase`, the renter no longer types the itemized cha
 
 The wizard then opens the Details step with those filled in and asks the renter to check each one against the letter. Everything stays editable. Details the renter already entered are kept, and **Read the letter again** replaces the charge list on request. The reader only transcribes; it leaves out totals and anything it can't read, and never judges a charge. If it can't read the letter, the renter enters the charges by hand as before, and **No letter / enter manually** skips reading altogether.
 
-It uses the same keys as the audit (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
+It uses the same key as the audit (`ANTHROPIC_API_KEY`, with `GEMINI_API_KEY` as an optional stand-in), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
+
+## Let renters explain their situation
+
+The wizard's Details step ends with a text box, **Anything else about your situation?**, for what the documents don't show: roommates and who paid the deposit, anything agreed with the landlord, repairs requested, the condition at move-in. It holds up to 4,000 characters and appears again on the Review step.
+
+Run the [case situation migration](supabase/migrations/20261115000200_case_situation.sql) once in the Supabase SQL Editor to add the column that stores it. Until then cases still save, and the box tells the renter their notes can't be kept yet.
+
+The audit and the case assistant read the notes as the renter's own account. They use them to understand the case and to ask for the right proof, such as the text message a renter says their landlord sent. They are told the notes are unverified: a charge's status never changes on the renter's word alone, and the app's own check still turns any finding with no evidence file behind it into **Need more info**. Changing the notes on an audited case marks it for a fresh audit.
 
 ## Run the charge-by-charge audit
 
-With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same keys as the case assistant.
+With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same key as the case assistant.
 
-1. A **document reader** (Claude) reads the deduction letter and lease: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, and lease terms about the deposit. If Claude is unavailable, Gemini reads them.
-2. A **photo analyst** (Gemini) looks at the move-in and move-out photos and reports what is visible for each charge. Steps 1 and 2 run together.
-3. An **auditor** (Gemini) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide.
+1. **Document readers** (Claude) read the deduction letter and lease in one request and the supporting documents two at a time in others: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, lease terms about the deposit, and what each supporting document shows for or against a charge.
+2. A **photo analyst** (Claude) looks at the move-in and move-out photos and reports what is visible for each charge. Every reader in steps 1 and 2 runs at the same time, and the server fetches the files together, so adding documents does not add to the wait.
+3. An **auditor** (Claude) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide. It is given deeper thinking than the readers whenever at least 26 seconds remain of the server's minute.
+
+Claude does every step, so the audit needs only `ANTHROPIC_API_KEY`. If `GEMINI_API_KEY` is also set, Gemini stands in for any single step that Claude fails.
 
 Each charge gets a status (Fair, Disputable, Likely not allowed, or Need more info), a plain explanation, the evidence files and guide sections behind it, and a list of what to add or check. The app then checks the auditor's answer in code. A finding with no evidence file behind it, or a finding against the landlord with no guide section, is changed to **Need more info**. The dollar range in **You may be owed** comes from the charge amounts: a disputable charge counts from $0 up to its amount, and a likely-not-allowed charge counts in full. The models never supply an amount.
 
+### Adding more documents
+
+The wizard's first step has a third upload area, **More documents that help your case**, for receipts, a move-in checklist, emails or texts with the landlord, repair invoices and the like. On a saved case, **Add more documents** on the Audit and Letter tabs opens that step. New files mark the case as needing review, and the next **Run audit** reads them with everything else. A finding may cite a supporting document only if the document reader actually read it.
+
 Limits to know about:
 
-- One audit reviews up to 4 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
+- One audit reviews up to 10 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
 - Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
 - The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
-- If `GEMINI_API_KEY` is missing, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
-- The letter, lease, photos and case details are sent to Anthropic (Claude) and Google. The Review step says so before the renter runs it.
+- If neither `ANTHROPIC_API_KEY` nor `GEMINI_API_KEY` is set, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
+- The letter, lease, other documents, photos and case details are sent to Anthropic (Claude), and to Google only if Gemini stands in. The Review step says so before the renter runs it.
 
 The result is information to help a renter organise their case, not legal advice.
 
 ## Enable the case assistant
 
-The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents from two providers:
+The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents:
 
-1. A **specialist** (Gemini) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
-2. A **reviewer** (Claude) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+1. A **specialist** (Claude) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
+2. A **reviewer** (Claude, in a separate request that sees only the draft, the case facts and the guide) checks it. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
 
-If Gemini is overloaded (it answers `503` or `429`), the app retries once and then lets Claude draft the answer, examine the photos or run the audit instead. If Claude is down, Gemini covers its jobs. With both keys set, one provider having a bad moment doesn't stop the audit or the assistant.
+The assistant needs only `ANTHROPIC_API_KEY`. If `GEMINI_API_KEY` is also set, Gemini stands in for a step that Claude fails, so one provider having a bad moment doesn't stop the audit or the assistant.
 
 ### If answers don't come through
 
@@ -139,11 +153,11 @@ Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
 
 | Variable | Value |
 |---|---|
-| `GEMINI_API_KEY` | The same Google AI Studio key used for Compare photos |
-| `ANTHROPIC_API_KEY` | A key from the [Claude Console](https://platform.claude.com/settings/keys), billed to your Claude API credit. Without it, Gemini reviews its own drafts. |
+| `GEMINI_API_KEY` (optional) | The Google AI Studio key used for Compare photos. Here it is only a stand-in for Claude. |
+| `ANTHROPIC_API_KEY` | A key from the [Claude Console](https://platform.claude.com/settings/keys), billed to your Claude API credit. Required for the assistant, the letter reader and the audit unless Gemini is set. |
 | `ANTHROPIC_MODEL` (optional) | A Claude model ID. The default is `claude-opus-5-5`; a smaller model such as `claude-haiku-5-5` costs less. |
 
-The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Google and Anthropic for each answer; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
+The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Anthropic for each answer, and to Google only if Gemini stands in; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
 ## Run a live move-out audit
 

@@ -210,6 +210,7 @@ type ServiceStatus = {
   problem: string;
   fix: string;
   available_models: string[];
+  optional?: boolean;
 };
 
 // Tests the site's AI keys and models and shows what, if anything, is wrong.
@@ -266,7 +267,12 @@ function AiCheck() {
           {services.map((item) => (
             <li key={item.service}>
               <strong>
-                {item.service}: {item.ok ? "working" : "not working"}
+                {item.service}:{" "}
+                {item.ok
+                  ? "working"
+                  : item.optional && !item.key_set
+                    ? "not set (optional)"
+                    : "not working"}
               </strong>
               <span className="assistant-meta">
                 Model {item.model} · {item.used_for}

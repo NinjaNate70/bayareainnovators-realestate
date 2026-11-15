@@ -92,6 +92,8 @@ export interface CaseRow {
   reply_by_date: string;
   incoming_text: string;
   reply_text: string;
+  // Absent on rows saved before this field existed.
+  situation_text?: string;
   created_at: string;
   updated_at: string;
   revision: number;

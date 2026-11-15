@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
+  FilePlus2,
   FileSearch,
   LoaderCircle,
   FolderOpen,
@@ -372,6 +373,14 @@ export function AuditTab({ data }: { data: RentalCase }) {
       </>
       )}
       <ActionBar>
+        {!data.demo && (
+          <Button asChild variant="outline">
+            <Link href={`/case/new?edit=${data.id}&step=letter`}>
+              <FilePlus2 size={18} aria-hidden="true" />
+              Add more documents
+            </Link>
+          </Button>
+        )}
         <Button asChild>
           <Link href={`/case/${data.id}?tab=letter`}>
             Draft demand letter
