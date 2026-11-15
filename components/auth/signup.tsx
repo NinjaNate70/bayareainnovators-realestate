@@ -1,0 +1,177 @@
+"use client";
+import { useEffect } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight } from "lucide-react";
+import { AuthFrame, OAuthButton } from "./frame";
+import {
+  Field,
+  FormError,
+  PasswordField,
+  Requirements,
+  SubmitButton,
+  useAuthForm,
+} from "./form";
+import { getBackend } from "@/lib/backend";
+import { passwordError, safeReturnTo, validEmail } from "@/lib/auth/validation";
+import { useAuth } from "./provider";
+import { recoveryDestination } from "@/lib/auth/drafts";
+export function Signup() {
+  const router = useRouter(),
+    search = useSearchParams(),
+    { session, state } = useAuth();
+  const form = useAuthForm((v) => ({
+    name: !v.name?.trim()
+      ? "Enter your name."
+      : v.name.trim().length > 100
+        ? "Use no more than 100 characters for your name."
+        : "",
+    email: !v.email
+      ? "Enter your email address."
+      : !validEmail(v.email.trim())
+        ? "Enter an email address like name@example.com."
+        : "",
+    password: passwordError(v.password ?? ""),
+    consent:
+      v.consent !== "yes"
+        ? "Agree to the Terms and Privacy Policy to continue."
+        : "",
+  }));
+  useEffect(() => {
+    const flow = search.get("change");
+    if (flow)
+      void getBackend()
+        .auth.getFlow(flow)
+        .then((r) => {
+          if (r.data)
+            form.setValues({
+              name: r.data.entered_name ?? "",
+              email: r.data.entered_email,
+            });
+        });
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (session)
+      void recoveryDestination(session, search.get("returnTo"))
+        .then((path) => router.replace(path))
+        .catch((e) => form.setError(e.message));
+  }, [session, search, router]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function signup() {
+    const r = await getBackend().auth.signUp({
+      email: form.values.email,
+      password: form.values.password,
+      options: {
+        data: {
+          name: form.values.name,
+          terms_version: "review-draft-v1",
+          privacy_version: "review-draft-v1",
+          consented_at: new Date().toISOString(),
+        },
+        emailRedirectTo: safeReturnTo(search.get("returnTo")) ?? undefined,
+      },
+    });
+    if (r.error) {
+      form.responseError(r.error);
+      return;
+    }
+    router.push(`/check-email?flow=${r.data?.flow_id}`);
+  }
+  const login = `/login${search.get("returnTo") ? `?returnTo=${encodeURIComponent(search.get("returnTo")!)}` : ""}`;
+  return (
+    <AuthFrame
+      title="A place for your case."
+      description="Create an account to keep your evidence and next steps together."
+    >
+      <OAuthButton />
+      <form
+        className="auth-form"
+        noValidate
+        aria-busy={form.busy}
+        onSubmit={(e) => void form.submit(e, signup)}
+      >
+        <FormError message={form.error} />
+        <Field
+          label="Name"
+          id="name"
+          name="name"
+          autoComplete="name"
+          value={form.values.name ?? ""}
+          onChange={(e) => form.setValue("name", e.target.value)}
+          onBlur={() => form.blur("name")}
+          error={form.errors.name}
+        />
+        <Field
+          label="Email"
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={form.values.email ?? ""}
+          onChange={(e) => form.setValue("email", e.target.value)}
+          onBlur={() => form.blur("email")}
+          error={form.errors.email}
+        />
+        <PasswordField
+          id="password"
+          name="password"
+          autoComplete="new-password"
+          value={form.values.password ?? ""}
+          onChange={(e) => form.setValue("password", e.target.value)}
+          onBlur={() => form.blur("password")}
+          error={form.errors.password}
+          hint="Use a password or passphrase you haven't used elsewhere."
+        />
+        <Requirements password={form.values.password ?? ""} />
+        <div>
+          <label className="auth-consent" htmlFor="consent">
+            <input
+              id="consent"
+              name="consent"
+              type="checkbox"
+              checked={form.values.consent === "yes"}
+              onChange={(e) =>
+                form.setValue("consent", e.target.checked ? "yes" : "")
+              }
+              onBlur={() => form.blur("consent")}
+              aria-invalid={!!form.errors.consent}
+              aria-describedby={
+                form.errors.consent ? "consent-error" : "policy-review"
+              }
+            />
+            <span>I agree to the Terms and Privacy Policy.</span>
+          </label>
+          <div className="auth-policy-links">
+            <Link href="/terms" target="_blank" rel="noreferrer">
+              Read Terms
+            </Link>
+            <Link href="/privacy" target="_blank" rel="noreferrer">
+              Read Privacy Policy
+            </Link>
+          </div>
+          <span className="field-feedback" aria-live="polite">
+            {form.errors.consent && (
+              <span id="consent-error">Fix this: {form.errors.consent}</span>
+            )}
+          </span>
+          <p id="policy-review" className="field-hint">
+            Hackathon review: these policies are drafts pending team approval.
+          </p>
+        </div>
+        <SubmitButton
+          busy={form.busy}
+          wait={form.wait}
+          loading="Creating account…"
+          disabled={state === "loading"}
+        >
+          Create account <ArrowRight size={18} aria-hidden="true" />
+        </SubmitButton>
+      </form>
+      <p className="auth-switch">
+        Already have an account? <Link href={login}>Sign in</Link>
+      </p>
+    </AuthFrame>
+  );
+}

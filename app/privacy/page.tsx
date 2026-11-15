@@ -1,0 +1,31 @@
+import Link from "next/link";
+export default function Privacy() {
+  return (
+    <main className="policy-page">
+      <Link className="auth-text-link" href="/">
+        Tenant Shield
+      </Link>
+      <p className="eyebrow">POLICY DRAFT — TEAM REVIEW NEEDED</p>
+      <h1>Privacy</h1>
+      <p>
+        Approved privacy wording has not yet been supplied. This page is a
+        review placeholder, not a published privacy policy.
+      </p>
+      <p>
+        In the current local demo, account records, passwords derived with
+        PBKDF2, case details and original files are stored in this browser. No
+        real verification or reset email is sent. Development links work in the
+        browser where they were requested.
+      </p>
+      <p>
+        Local sign-in is a demonstration and does not protect against someone
+        who can inspect or modify browser storage. Clearing site storage removes
+        local records. The team must review the privacy promise beside forms
+        before release.
+      </p>
+      <Link className="auth-text-link" href="/terms">
+        Terms draft
+      </Link>
+    </main>
+  );
+}

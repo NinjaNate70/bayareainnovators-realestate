@@ -2,12 +2,16 @@
 
 My Inspections lets renters save move-in and move-out photos by lease and room. Vercel hosts the Next.js website. Supabase Auth, Postgres, and private Storage provide the shared account and data for the phone and desktop browsers.
 
+Open **My Inspections** from the homepage to use the Supabase-backed workflow. The existing case workflow still uses browser-local accounts and data. Leave `NEXT_PUBLIC_BACKEND` unset or set to `local` for those case screens. My Inspections uses its own Supabase sign-in and runs with either of those settings. See the [case auth guide](design-system/AUTH-IMPLEMENTATION.md) for the local-case setup.
+
 ## Set up Supabase
 
 1. Create a Supabase project and open its **SQL Editor**. Run the full [inspection migration](supabase/migrations/20261114000100_inspections.sql) once. It creates the lease, room, and photo tables, the private `inspection-photos` bucket, and renter access policies.
 2. In **Authentication → Sign In / Providers**, enable email and password sign-in and keep **Confirm email** enabled. For an initial smoke test, you can create and confirm a test user directly in the **Authentication → Users** dashboard. Set up [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp) before inviting renters to register using their own email addresses.
 3. In **Authentication → URL Configuration**, set **Site URL** to your production website origin, such as `https://tenant-shield.vercel.app`. Add `https://tenant-shield.vercel.app/inspections` under **Redirect URLs**, using your actual hostname. If you test sign-up on a Vercel preview, add that preview's full `/inspections` URL to the list. [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
 4. Copy the **Project URL** and **Publishable key** from the project's **Connect** dialog. [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys)
+
+The case schema and bucket setup in `supabase/schema.sql` and `supabase/storage.sql` are optional for My Inspections. If you already applied an older version of both case scripts in the same project and an inspection upload reports `permission denied for table cases`, run `grant select (id, user_id) on public.cases to authenticated;` once in the SQL Editor. The updated `storage.sql` includes this grant for fresh case setups. The cases RLS policy still restricts reads to the user who owns the case.
 
 ## Connect Vercel
 

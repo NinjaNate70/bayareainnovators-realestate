@@ -1,0 +1,757 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  CircleHelp,
+  Plus,
+  Trash2,
+  LoaderCircle,
+  FileCheck2,
+} from "lucide-react";
+import { Shell, ActionBar } from "@/components/shell";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { UploadZone } from "@/components/upload-zone";
+import { freshCase, money, readCase, saveCase } from "@/lib/cases";
+import { getBackend } from "@/lib/backend";
+import { fromRow } from "@/lib/db/mapping";
+import { unwrap } from "@/lib/cases";
+import { rememberCase } from "@/lib/auth/drafts";
+import type { Evidence, RentalCase } from "@/types/case";
+
+const steps = ["Letter", "Details", "Photos", "Review"];
+export function CaseWizard() {
+  const router = useRouter();
+  const [data, setData] = useState<RentalCase | null>(null);
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState("");
+  const [invalid, setInvalid] = useState<
+    "address" | "charges" | "money" | "dates" | "letter" | null
+  >(null);
+  const [busy, setBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [manual, setManual] = useState(false);
+  const summary = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      try {
+        const params = new URLSearchParams(location.search);
+        const edit = params.get("edit");
+        const recent = unwrap(await getBackend().data.listCases()).find(
+          (c) => !c.audited,
+        );
+        const existing = edit
+          ? await readCase(edit)
+          : recent
+            ? await readCase(recent.id)
+            : null;
+        if (edit && !existing) throw new Error("This case is unavailable.");
+        const value = existing ?? freshCase();
+        if (!existing) await saveCase(value);
+        if (!active) return;
+        setData(value);
+        const requested = steps.findIndex(
+          (s) => s.toLowerCase() === params.get("step"),
+        );
+        setStep(requested >= 0 ? Math.min(requested, value.completedStep) : 0);
+        setManual(value.charges.length > 0 && !value.demo);
+      } catch {
+        setError(
+          "We could not restore your draft. Your saved records have not been changed. Reload to try again.",
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!data) return;
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      try {
+        await saveCase(data);
+        if (active) setSaveStatus("Draft saved in this browser");
+      } catch {
+        if (active)
+          setSaveStatus(
+            "Draft not saved. Keep this page open and retry when browser storage is available.",
+          );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [data]);
+  useEffect(() => {
+    if (error) summary.current?.focus();
+  }, [error]);
+  if (!data)
+    return (
+      <Shell>
+        <div className="loading-state" role="status">
+          {error ? (
+            <>
+              <p role="alert">{error}</p>
+              <Button onClick={() => location.reload()}>Try again</Button>
+            </>
+          ) : (
+            <>
+              <LoaderCircle className="spin" /> Loading your draft…
+            </>
+          )}
+        </div>
+      </Shell>
+    );
+  function patch(value: Partial<RentalCase>) {
+    const changesFacts = Object.keys(value).some((key) =>
+      [
+        "address",
+        "renter",
+        "landlord",
+        "moveOut",
+        "received",
+        "deposit",
+        "returned",
+        "charges",
+        "evidence",
+      ].includes(key),
+    );
+    setData((d) => {
+      const next = d
+        ? {
+            ...d,
+            ...value,
+            demo: changesFacts ? false : (value.demo ?? d.demo),
+            stale: changesFacts && d.audited ? true : d.stale,
+          }
+        : d;
+      if (next) rememberCase(next);
+      return next;
+    });
+  }
+  function navigate(next: number) {
+    if (!data) return;
+    setStep(next);
+    setError("");
+    setInvalid(null);
+    const url = `/case/new?step=${steps[next].toLowerCase()}${new URLSearchParams(location.search).has("edit") ? `&edit=${data.id}` : ""}`;
+    history.replaceState(null, "", url);
+    requestAnimationFrame(() => {
+      heading.current?.focus();
+      window.scrollTo(0, 0);
+    });
+  }
+  function next() {
+    if (!data) return;
+    if (
+      step === 0 &&
+      !manual &&
+      !data.evidence.some((f) => f.kind === "letter")
+    ) {
+      setInvalid("letter");
+      setError(
+        "Choose a deduction letter, or select “No letter / enter manually” to continue.",
+      );
+      return;
+    }
+    if (step === 1) {
+      if (!data.address.trim() || !data.address.match(/\bCA\b|california/i)) {
+        setInvalid("address");
+        setError(
+          "Enter the California rental address, including CA, in Property address.",
+        );
+        return;
+      }
+      if (
+        !data.charges.length ||
+        data.charges.some(
+          (c) => !c.name.trim() || !Number.isFinite(c.amount) || c.amount <= 0,
+        )
+      ) {
+        setInvalid("charges");
+        setError(
+          "Add at least one charge with a description and an amount greater than zero.",
+        );
+        return;
+      }
+      if (
+        data.deposit < 0 ||
+        data.returned < 0 ||
+        data.returned > data.deposit
+      ) {
+        setInvalid("money");
+        setError(
+          "Check the deposit and returned amount. Returned money cannot exceed the deposit.",
+        );
+        return;
+      }
+      if (
+        Math.abs(
+          data.deposit -
+            data.returned -
+            data.charges.reduce((n, c) => n + c.amount, 0),
+        ) > 0.01
+      ) {
+        setInvalid("money");
+        setError(
+          "The charges must add up to deposit paid minus amount returned. Check the amounts below.",
+        );
+        return;
+      }
+      if (data.moveOut && data.received && data.received < data.moveOut) {
+        setInvalid("dates");
+        setError(
+          "Check the received date: this move-out case has a letter dated before move-out.",
+        );
+        return;
+      }
+    }
+    patch({ completedStep: Math.max(data.completedStep, step + 1) });
+    navigate(step + 1);
+  }
+  async function run() {
+    if (!data) return;
+    setBusy(true);
+    setError("");
+    try {
+      // TODO(api): Submit confirmed evidence and facts to the audit service; never apply demo findings to user uploads.
+      const value: RentalCase = {
+        ...data,
+        audited: true,
+        stale: false,
+        charges: data.demo
+          ? data.charges
+          : data.charges.map((c) => ({
+              ...c,
+              verdict: "info",
+              sources: data.evidence
+                .filter((e) => e.kind === "letter")
+                .map((e) => e.id),
+              low: 0,
+              high: 0,
+              reason:
+                "Your charge is recorded. Automated evidence and legal review is not connected in this MVP. Add supporting records and review the charge before drawing a conclusion.",
+            })),
+      };
+      await saveCase(value);
+      router.push(`/case/${value.id}`);
+    } catch {
+      setError(
+        "The case could not be saved. Your details are still on this page. Retry when browser storage is available.",
+      );
+      setBusy(false);
+    }
+  }
+  // TODO(api): Extract letter/lease fields from saved originals and ask the renter to confirm them before analysis.
+  const addFile = (e: Evidence) =>
+    setData((d) =>
+      d
+        ? {
+            ...d,
+            demo: false,
+            audited: false,
+            stale: true,
+            evidence: [...d.evidence, e],
+          }
+        : d,
+    );
+  const removeFile = (id: string) =>
+    patch({ evidence: data.evidence.filter((e) => e.id !== id), demo: false });
+  return (
+    <Shell>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">A CLEARER NEXT STEP</p>
+          <h1 ref={heading} tabIndex={-1}>
+            Let’s put your case together.
+          </h1>
+          <p>A few details. Your evidence. One organized case.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/">Save & exit</Link>
+        </Button>
+      </div>
+      <div className="wizard-layout">
+        <div>
+          <ol className="stepper" aria-label="Case progress">
+            {steps.map((label, i) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  disabled={i > data.completedStep || busy}
+                  onClick={() => navigate(i)}
+                  aria-current={step === i ? "step" : undefined}
+                >
+                  <span className="step-number">
+                    {i < step ? <Check size={15} aria-hidden="true" /> : i + 1}
+                  </span>
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ol>
+          {error && (
+            <div ref={summary} tabIndex={-1} className="notice" role="alert">
+              <strong>Fix this to continue</strong>
+              <p>{error}</p>
+              <a
+                className="text-link"
+                href={
+                  invalid === "address"
+                    ? "#address"
+                    : invalid === "charges"
+                      ? "#charges"
+                      : invalid === "money"
+                        ? "#deposit"
+                        : invalid === "dates"
+                          ? "#received"
+                          : "#step-content"
+                }
+              >
+                Review {steps[step].toLowerCase()}
+              </a>
+            </div>
+          )}
+          <Card id="step-content">
+            <p className="eyebrow">STEP {step + 1} OF 4</p>
+            <h2>
+              {
+                [
+                  "Start with the deduction letter",
+                  "Confirm the details",
+                  "Let your photos tell the story",
+                  "You’re ready for the next step",
+                ][step]
+              }
+            </h2>
+            <p className="muted">
+              {
+                [
+                  "A clear record of what was charged is the best place to start.",
+                  "Review extracted facts or enter the details from your letter.",
+                  "Optional, but helpful. Add matching views from move-in and move-out.",
+                  "Review your evidence and case details before continuing.",
+                ][step]
+              }
+            </p>
+            {busy ? (
+              <div className="loading-state" role="status" aria-busy="true">
+                <LoaderCircle className="spin" size={32} />
+                <h3>Preparing your case file</h3>
+                <p>
+                  {data.demo
+                    ? "Opening the illustrative audit."
+                    : "Saving your confirmed details for review."}
+                </p>
+              </div>
+            ) : (
+              <>
+                {step === 0 && (
+                  <div className="stack">
+                    <div className="notice">
+                      <strong>Try the complete demo</strong>
+                      <p>
+                        Use an illustrative six-charge case to explore the full
+                        audit, evidence, and letter flow.
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          const owned = await getBackend().data.getCase("demo");
+                          if (!owned.data) {
+                            setError(
+                              "The example belongs to the demo account. Sign in with demo@tenantshield.app to explore it.",
+                            );
+                            return;
+                          }
+                          const value = fromRow(owned.data);
+                          value.audited = false;
+                          setData(value);
+                          setManual(false);
+                          setError("");
+                        }}
+                      >
+                        Use example documents
+                      </Button>
+                    </div>
+                    <UploadZone
+                      title="Landlord’s deduction letter"
+                      caseId={data.id}
+                      kind="letter"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
+                    <UploadZone
+                      title="Lease (optional)"
+                      caseId={data.id}
+                      kind="lease"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={manual}
+                        onChange={(e) => setManual(e.target.checked)}
+                      />
+                      No letter / enter manually
+                    </label>
+                    <p className="small muted">
+                      Automatic extraction is not connected. For your own
+                      documents, you’ll enter and confirm charges in the next
+                      step.
+                    </p>
+                  </div>
+                )}
+                {step === 1 && (
+                  <div className="stack">
+                    <div className="fields-grid">
+                      <label className="field-full" htmlFor="address">
+                        <span className="field-label">
+                          Property address (required, California)
+                        </span>
+                        <input
+                          id="address"
+                          aria-invalid={invalid === "address"}
+                          aria-describedby={
+                            invalid === "address" ? "address-error" : undefined
+                          }
+                          autoComplete="street-address"
+                          value={data.address}
+                          onChange={(e) => patch({ address: e.target.value })}
+                        />
+                        {invalid === "address" && (
+                          <span id="address-error" className="inline-error">
+                            {error}
+                          </span>
+                        )}
+                      </label>
+                      <label>
+                        <span className="field-label">
+                          Your name (optional)
+                        </span>
+                        <input
+                          autoComplete="name"
+                          value={data.renter}
+                          onChange={(e) => patch({ renter: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span className="field-label">
+                          Landlord / manager (optional)
+                        </span>
+                        <input
+                          value={data.landlord}
+                          onChange={(e) => patch({ landlord: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span className="field-label">
+                          Move-out date (or leave unknown)
+                        </span>
+                        <input
+                          type="date"
+                          value={data.moveOut}
+                          onChange={(e) => patch({ moveOut: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span className="field-label">
+                          Letter received (or leave unknown)
+                        </span>
+                        <input
+                          type="date"
+                          value={data.received}
+                          id="received"
+                          aria-invalid={invalid === "dates"}
+                          aria-describedby={
+                            invalid === "dates" ? "dates-error" : undefined
+                          }
+                          onChange={(e) => patch({ received: e.target.value })}
+                        />
+                        {invalid === "dates" && (
+                          <span id="dates-error" className="inline-error">
+                            {error}
+                          </span>
+                        )}
+                      </label>
+                      <label>
+                        <span className="field-label">Deposit paid ($)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={data.deposit}
+                          id="deposit"
+                          aria-invalid={invalid === "money"}
+                          aria-describedby={
+                            invalid === "money" ? "money-error" : undefined
+                          }
+                          onChange={(e) =>
+                            patch({ deposit: Number(e.target.value) })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span className="field-label">Amount returned ($)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={data.returned}
+                          onChange={(e) =>
+                            patch({ returned: Number(e.target.value) })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div id="charges" tabIndex={-1}>
+                      <h3>Itemized charges</h3>
+                      {invalid === "charges" && (
+                        <p className="inline-error">{error}</p>
+                      )}
+                      {invalid === "money" && (
+                        <p id="money-error" className="inline-error">
+                          {error}
+                        </p>
+                      )}
+                      <p className="small muted">
+                        From{" "}
+                        {data.demo
+                          ? "L01 · example letter"
+                          : "your deduction letter"}
+                        . Confirm each description and amount.
+                      </p>
+                      {data.charges.map((c, i) => (
+                        <div className="charge-entry" key={c.id}>
+                          <label>
+                            Charge {i + 1}
+                            <input
+                              aria-label={`Charge ${i + 1} description`}
+                              value={c.name}
+                              onChange={(e) =>
+                                patch({
+                                  demo: false,
+                                  charges: data.charges.map((x, j) =>
+                                    j === i
+                                      ? { ...x, name: e.target.value }
+                                      : x,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Amount ($)
+                            <input
+                              aria-label={`Charge ${i + 1} amount`}
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.01"
+                              value={c.amount}
+                              onChange={(e) =>
+                                patch({
+                                  demo: false,
+                                  charges: data.charges.map((x, j) =>
+                                    j === i
+                                      ? { ...x, amount: Number(e.target.value) }
+                                      : x,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Remove charge ${i + 1}`}
+                            onClick={() =>
+                              patch({
+                                demo: false,
+                                charges: data.charges.filter((_, j) => j !== i),
+                              })
+                            }
+                          >
+                            <Trash2 size={18} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          patch({
+                            demo: false,
+                            charges: [
+                              ...data.charges,
+                              {
+                                id: crypto.randomUUID(),
+                                name: "",
+                                room: "Unspecified",
+                                amount: 0,
+                                verdict: "info",
+                                sources: [],
+                                low: 0,
+                                high: 0,
+                                reason: "Review needed.",
+                              },
+                            ],
+                          })
+                        }
+                      >
+                        <Plus size={18} aria-hidden="true" />
+                        Add charge
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {step === 2 && (
+                  <div className="stack">
+                    <div className="notice">
+                      No photos? You can still organize and review your document
+                      evidence.
+                    </div>
+                    <UploadZone
+                      title="Move-in photos (optional)"
+                      caseId={data.id}
+                      kind="before"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
+                    <UploadZone
+                      title="Move-out photos (optional)"
+                      caseId={data.id}
+                      kind="after"
+                      files={data.evidence}
+                      onAdd={addFile}
+                      onRemove={removeFile}
+                    />
+                    <p className="small muted">
+                      Pair matching views in the Photos tab after creating your
+                      case.
+                    </p>
+                  </div>
+                )}
+                {step === 3 && (
+                  <div>
+                    <div className="review-item split-row">
+                      <div>
+                        <strong>{data.address}</strong>
+                        <p className="small muted">
+                          {data.moveOut
+                            ? `Moved out ${data.moveOut}`
+                            : "Move-out date unknown"}
+                        </p>
+                      </div>
+                      <Button variant="ghost" onClick={() => navigate(1)}>
+                        Edit details
+                      </Button>
+                    </div>
+                    <div className="review-item split-row">
+                      <div>
+                        <strong>
+                          {data.charges.length} charges ·{" "}
+                          {money(
+                            data.charges.reduce((n, c) => n + c.amount, 0),
+                          )}
+                        </strong>
+                        <p className="small muted">
+                          Deposit {money(data.deposit)} · Returned{" "}
+                          {money(data.returned)}
+                        </p>
+                      </div>
+                      <FileCheck2 size={24} aria-hidden="true" />
+                    </div>
+                    <div className="review-item">
+                      <strong>{data.evidence.length} evidence files</strong>
+                      <ul>
+                        {data.evidence.map((f) => (
+                          <li key={f.id}>{f.name}</li>
+                        ))}
+                      </ul>
+                      <Button variant="ghost" onClick={() => navigate(2)}>
+                        Edit photos
+                      </Button>
+                    </div>
+                    <div className="notice">
+                      <strong>
+                        {data.demo
+                          ? "Illustrative demo audit"
+                          : "Your case, ready for review"}
+                      </strong>
+                      <p>
+                        {data.demo
+                          ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
+                          : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+          <p className="small muted" role="status" style={{ marginTop: 16 }}>
+            {saveStatus} · Not legal advice.
+          </p>
+          <ActionBar>
+            {step > 0 && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => navigate(step - 1)}
+              >
+                <ArrowLeft size={18} aria-hidden="true" />
+                Back
+              </Button>
+            )}
+            <Button
+              disabled={busy}
+              onClick={() => (step === 3 ? void run() : next())}
+            >
+              {busy
+                ? "Preparing…"
+                : step === 3
+                  ? "Run audit"
+                  : step === 2
+                    ? "Continue to review"
+                    : "Continue"}
+              {!busy && <ArrowRight size={18} aria-hidden="true" />}
+            </Button>
+          </ActionBar>
+        </div>
+        <aside className="card wizard-help">
+          <CircleHelp size={24} aria-hidden="true" />
+          <h3 style={{ marginTop: 16 }}>You don’t need to know the law.</h3>
+          <p>
+            Start with what you have. Clear records make it easier to understand
+            what happened.
+          </p>
+          <hr />
+          <p>
+            We’ll keep fair charges visible and show where more information is
+            needed.
+          </p>
+          <p className="small">
+            California · Move-out only
+            <br />
+            Information, not legal advice.
+          </p>
+        </aside>
+      </div>
+    </Shell>
+  );
+}
