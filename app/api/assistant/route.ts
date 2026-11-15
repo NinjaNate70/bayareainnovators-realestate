@@ -24,6 +24,16 @@ function allow(userId: string) {
 
 const caseColumns = 'address, renter_name, landlord_name, move_out_date, letter_received_date, deposit_cents, returned_cents, completed_step, audited, letter_text, reply_by_date, incoming_text, reply_text, charges, evidence';
 
+// Names the service and status only (for example "Gemini request failed (404)"),
+// so a setup problem can be told apart from a slow answer. Never includes keys.
+function failure(error: unknown) {
+  if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
+  const message = error instanceof Error ? error.message : '';
+  return /^(Gemini|OpenAI) (request failed \(\d{3}\)|did not return a complete \w+)\.$/.test(message)
+    ? message.slice(0, -1)
+    : 'unexpected error';
+}
+
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -73,7 +83,8 @@ export async function POST(request: Request) {
     });
     return Response.json(reply, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.warn('Case assistant failed:', error instanceof Error ? error.message : 'Unknown error');
-    return respond('The assistant couldn’t finish that answer. Try again in a moment.', 502);
+    const detail = failure(error);
+    console.warn('Case assistant failed:', detail);
+    return respond(`The assistant couldn’t finish that answer (${detail}). Try again in a moment.`, 502);
   }
 }

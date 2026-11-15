@@ -7,6 +7,9 @@
 //   3. Auditor (Gemini) weighs each charge against those findings, any saved
 //      My Inspections comparisons and the California Courts deposit guide.
 //
+// Time limits: the readers get 30 seconds between them and the auditor 22, so
+// the whole audit answers inside the server's 60-second limit.
+//
 // The auditor's output is then checked in code: a finding that is not backed by
 // the renter's evidence and the guide is downgraded to "Need more info".
 //
@@ -166,7 +169,7 @@ async function readDocuments(input: AuditInput, files: AuditFile[], keys: Keys, 
           ? { type: 'file', file: { filename: file.name || `${file.id}.pdf`, file_data: url } }
           : { type: 'image_url', image_url: { url } });
       }
-      const reading = await callOpenAi({ apiKey: keys.openAiKey, model: keys.openAiModel, system: documentSystem, parts, fetch: call, timeout: 30_000 });
+      const reading = await callOpenAi({ apiKey: keys.openAiKey, model: keys.openAiModel, system: documentSystem, parts, fetch: call, timeout: 18_000 });
       return { reading, by: 'openai' as const };
     } catch {
       // Fall through: Gemini reads the same documents.
@@ -174,7 +177,8 @@ async function readDocuments(input: AuditInput, files: AuditFile[], keys: Keys, 
   }
   const parts: GeminiPart[] = [{ text: chargeList(input.charges) }];
   for (const file of files) parts.push({ text: label(file) }, { inline_data: { mime_type: file.mime, data: file.data } });
-  const reading = await callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: documentSystem, parts, schema: documentSchema, fetch: call, timeout: 30_000 });
+  // Whatever is left of the readers' 30 seconds after an OpenAI attempt.
+  const reading = await callGemini({ apiKey: keys.geminiKey, model: keys.geminiModel, system: documentSystem, parts, schema: documentSchema, fetch: call, timeout: keys.openAiKey ? 12_000 : 30_000 });
   return { reading, by: 'gemini' as const };
 }
 
@@ -337,7 +341,7 @@ export async function runCaseAudit(options: Keys & { input: AuditInput; guide: G
   ].filter(Boolean).join('\n\n');
 
   const verdict = await callGemini({
-    apiKey: options.geminiKey, model: options.geminiModel, fetch: call, timeout: 25_000,
+    apiKey: options.geminiKey, model: options.geminiModel, fetch: call, timeout: 22_000,
     system: auditorSystem(guide), parts: [{ text: context }], schema: auditorSchema(guide),
   });
 

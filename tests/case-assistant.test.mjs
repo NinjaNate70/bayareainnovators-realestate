@@ -77,37 +77,36 @@ const options = (fetch, extra = {}) => ({
   openAiKey: 'o-key', openAiModel: 'openai-test', fetch, ...extra,
 });
 
-test('coordinator routes, a specialist drafts and OpenAI reviews', async () => {
+test('Gemini answers as the chosen specialist and OpenAI reviews', async () => {
   const calls = [];
   const reply = await runAssistant(options(async (url, init) => {
     const body = JSON.parse(init.body);
     calls.push({ url: String(url), headers: init.headers, body });
     if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
-    return calls.length === 1 ? gemini({ agent: 'rules' }) : gemini({ answer: 'They have 21 days.', guide_sections: ['G3'] });
+    return gemini({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] });
   }));
   assert.deepEqual(reply, {
     reply: 'They have 21 days.', agent: 'rules', agent_label: 'Deposit rules', reviewed_by: 'openai', revised: false,
     sources: [{ id: 'G3', title: 'The 21-day deadline' }],
   });
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.match(calls[0].url, /models\/gemini-test:generateContent$/);
   assert.equal(calls[0].headers['x-goog-api-key'], 'g-key');
-  assert.equal(calls[2].headers.Authorization, 'Bearer o-key');
-  assert.equal(calls[2].body.model, 'openai-test');
+  assert.equal(calls[1].headers.Authorization, 'Bearer o-key');
+  assert.equal(calls[1].body.model, 'openai-test');
   // The specialist and the reviewer both get the guide and the case facts.
-  const specialist = calls[1].body.systemInstruction.parts[0].text;
+  const specialist = calls[0].body.systemInstruction.parts[0].text;
   assert.ok(depositGuide.every((section) => specialist.includes(`[${section.id}]`)));
-  assert.match(calls[1].body.contents[0].parts[0].text, /"twenty_one_days_after_move_out":"2026-11-21"/);
-  assert.match(calls[2].body.messages[1].content, /Draft answer from the Deposit rules:\nThey have 21 days\./);
+  assert.match(calls[0].body.contents[0].parts[0].text, /"twenty_one_days_after_move_out":"2026-11-21"/);
+  assert.match(calls[1].body.messages[1].content, /Draft answer from the Deposit rules:\nThey have 21 days\./);
   // No key ever appears in a prompt.
   assert.ok(!JSON.stringify(calls.map((call) => call.body)).includes('-key'));
 });
 
 test('a rejected draft is replaced by the reviewer’s correction', async () => {
-  let n = 0;
   const reply = await runAssistant(options(async (url) => {
     if (String(url).includes('openai.com')) return openai({ approved: false, answer: 'The guide does not cover that.', guide_sections: [], note: 'Removed an unsupported rule.' });
-    return ++n === 1 ? gemini({ agent: 'rules' }) : gemini({ answer: 'You will win triple damages.', guide_sections: ['G9'] });
+    return gemini({ agent: 'rules', answer: 'You will win triple damages.', guide_sections: ['G9'] });
   }));
   assert.equal(reply.reply, 'The guide does not cover that.');
   assert.equal(reply.revised, true);
@@ -122,8 +121,7 @@ test('Gemini reviews when OpenAI is missing or failing', async () => {
       urls.push(String(url));
       if (String(url).includes('openai.com')) return new Response('nope', { status: 500 });
       n += 1;
-      if (n === 1) return gemini({ agent: 'steps' });
-      if (n === 2) return gemini({ answer: 'Open the Letter tab.', guide_sections: [] });
+      if (n === 1) return gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
       return gemini({ approved: true, answer: '', guide_sections: [], note: '' });
     }, extra));
     assert.equal(reply.reviewed_by, 'gemini');
@@ -137,8 +135,7 @@ test('an unreviewed draft is never returned', async () => {
   await assert.rejects(runAssistant(options(async (url) => {
     if (String(url).includes('openai.com')) return new Response('down', { status: 503 });
     n += 1;
-    if (n === 1) return gemini({ agent: 'steps' });
-    if (n === 2) return gemini({ answer: 'Draft.', guide_sections: [] });
+    if (n === 1) return gemini({ agent: 'steps', answer: 'Draft.', guide_sections: [] });
     return new Response('down', { status: 503 });
   })), /Gemini request failed \(503\)/);
 });

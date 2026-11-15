@@ -41,6 +41,16 @@ type StoredCase = {
   photo_pairs: Record<string, { before?: string; after?: string }> | null;
 };
 
+// Names the service and status only (for example "Gemini request failed (404)"),
+// so a setup problem can be told apart from a slow answer. Never includes keys.
+function failure(error: unknown) {
+  if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
+  const message = error instanceof Error ? error.message : '';
+  return /^(Gemini|OpenAI) (request failed \(\d{3}\)|did not return a complete \w+)\.$/.test(message)
+    ? message.slice(0, -1)
+    : 'unexpected error';
+}
+
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -155,7 +165,8 @@ export async function POST(request: Request) {
     });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.warn('Case audit failed:', error instanceof Error ? error.message : 'Unknown error');
-    return respond('The audit couldn’t finish. Your case is saved. Try again in a moment.', 502);
+    const detail = failure(error);
+    console.warn('Case audit failed:', detail);
+    return respond(`The audit couldn’t finish (${detail}). Your case is saved. Try again in a moment.`, 502);
   }
 }

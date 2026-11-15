@@ -64,6 +64,8 @@ export function CaseAssistant({
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
+        // The server answers within a minute; past that, stop waiting.
+        signal: AbortSignal.timeout(70_000),
         body: JSON.stringify({
           message: text,
           history,
@@ -89,7 +91,11 @@ export function CaseAssistant({
       setMessages((current) => current.slice(0, -1));
       setDraft(text);
       setError(
-        cause instanceof Error ? cause.message : "The assistant couldn’t answer.",
+        cause instanceof Error && cause.name === "TimeoutError"
+          ? "The assistant took too long to answer. Try again."
+          : cause instanceof Error
+            ? cause.message
+            : "The assistant couldn’t answer.",
       );
     } finally {
       setBusy(false);
@@ -155,7 +161,8 @@ export function CaseAssistant({
           {busy && (
             <p className="assistant-meta" role="status">
               <LoaderCircle className="spin" size={16} aria-hidden="true" />{" "}
-              Choosing a specialist, drafting, then reviewing…
+              Drafting an answer, then having it reviewed. This can take up to
+              half a minute…
             </p>
           )}
           <div ref={end} />
