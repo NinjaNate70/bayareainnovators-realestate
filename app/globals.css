@@ -201,6 +201,52 @@
   gap: 8px;
   margin-bottom: 24px;
 }
+.google-button,
+.google-button:hover:not(:disabled) {
+  background: #fff;
+  border-color: #dadce0;
+  color: #3c4043;
+}
+.google-button {
+  gap: 12px;
+  font-weight: 600;
+}
+.google-button:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #c6c9cd;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.2);
+}
+.google-button:active:not(:disabled) {
+  background: #f1f3f4;
+}
+.google-button:focus-visible {
+  outline: 3px solid #4285f4;
+  outline-offset: 2px;
+}
+.google-button:disabled {
+  background: #f1f3f4;
+  border-color: #e3e5e8;
+  color: #80868b;
+  cursor: not-allowed;
+}
+.google-button:disabled svg:not(.spin) {
+  opacity: 0.5;
+}
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  color: #5f6368;
+  font-size: 13px;
+}
+.auth-or::before,
+.auth-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e0e3e7;
+}
 .auth-switch {
   text-align: center;
   margin: 16px 0;
