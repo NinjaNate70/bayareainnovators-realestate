@@ -200,7 +200,33 @@ scrim 40, sheet/dialog 50. Closed overlays leave no focusable hidden content.
 | Skeleton/status | Reserved card structure plus "Analyzing your evidence" with named phases | aria-busy, one polite live region; indeterminate if no real progress; no fabricated percent or timer |
 | Error block | AlertCircle, cause, retained work description, actionable retry/edit | Navy + label, role=alert once; focus summary after failed submit; no raw API errors or sensitive data |
 
-## Money, deadlines, and trust
+## Auth and account extension components
+
+Review draft: AUTH.md and DATA.md extend this system. Their required-account rule
+supersedes SCREENS.md's earlier no-auth/public-demo assumptions. No implementation
+is included in the auth Phase 1 commit. Keep all existing colors, fonts, radii,
+shadows, motion and minimum control sizes; do not add red auth/destructive states.
+
+| New component | Specification | States / accessibility |
+| --- | --- | --- |
+| Auth frame | Existing navy brand panel + max-440px form at desktop; single-column card and 16px gutters on mobile; persistent Terms/Privacy/Not legal advice footer | No signed-out case nav; 320px reflow/200% zoom; one h1 and main landmark |
+| Password field | Existing field control with a reserved >=44px Show/Hide button; input 16px/48px, current-password or new-password autocomplete | type=button toggle with explicit accessible name; paste/autofill work; blur/submit errors; no secret persistence |
+| Password requirements checklist | 14px DM Sans, three rows, Circle/CircleCheck SVG + text; min 12, max 128 characters, more than spaces | Live informational guidance separate from blur validation; no color-only meaning or every-keystroke announcement |
+| Resend timer | Existing outlined Button, stable width, absolute deadline and disabled cooldown label | 60-second cooldown; polite announcement when ready, no per-second live region; reload retains wait |
+| Account menu | >=44px avatar trigger with initials + accessible name; desktop sidebar menu/mobile header Sheet; My cases, Account settings, Sign out | Standard menu keyboard behavior or Sheet focus trap/return; initials and long email wrap; no identity before session resolves |
+| My cases panel | Reuse Sheet/right-panel primitive; owned case rows ordered by updated_at; Start a case action | Empty state routes to new case; no empty-dashboard destination; no other owner's counts |
+| Protected-route loading | Existing skeleton/status treatment with Opening your account text | No address, file preview, avatar or case count before identity/ownership checks; no guest fallback |
+| Session-expired prompt | Existing named dialog/Sheet with Sign in to keep going and checkpoint status | Block/inert workspace; preserve drafts and return path; no false saved claim on storage failure; retain owner boundary |
+| Typed deletion confirmation | Existing neutral/named dialog, explicit irreversible scope, current-password check, Type DELETE field | Exact confirmation, first-invalid-field focus, Cancel/Keep my account, latched delete; navy emphasis, never red |
+| Dev Outbox / demo panel | Small existing Card/notice, labeled Local demo; escaped entered email, one-time link and expiry | Development-only server gate; no production DOM/log/secret; same-browser explanation; no auto-opening links |
+| OAuth action (future) | Existing outlined full-width Button: Continue with Google; approved mark only | Hidden until both NEXT_PUBLIC_ENABLE_OAUTH and backend capability are true; no dead control or new theme colors |
+
+Auth validation exceptions to older general rules: on submit, focus the first
+invalid field as requested; use a form-error block only for form-wide failures.
+Password checklist updates are live guidance, while field errors validate on blur.
+Sign-up and recovery responses must not reveal whether an account exists.
+
+## Money, deadlines, and trust (case workflow)
 
 Owed card dominates the Audit view: first substantive content after the case
 header, full width on mobile and across the content column on desktop.
