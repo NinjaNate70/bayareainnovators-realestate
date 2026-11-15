@@ -65,30 +65,22 @@ If an inspection upload reports `permission denied for table cases`, run the cas
 
 Uploads go directly to Supabase. The app keeps the original file and supports JPEG, PNG, WebP, HEIC and HEIF up to 20 MB each. The gallery tries to create a JPEG preview in the browser when it cannot display an HEIC or HEIF original. You can download the original even if preview generation fails. If a connection drops, retry **Upload photo** with the same file, room, and phase while the form is open.
 
-## Enable Compare photos with Gemini
+## Compare inspection photos with Claude
 
 1. Run the [comparison migration](supabase/migrations/20261114000200_inspection_comparisons.sql) in the Supabase SQL Editor after the inspection migration. It creates `inspection_comparisons` and `repair_price_bands`. Renters can read their own completed comparisons. The Vercel API writes comparison results after verifying the renter's session and ownership of both photo records.
-2. In [Google AI Studio](https://aistudio.google.com/apikey), create a Gemini API key for the Google Cloud project you want to use. Use a billing-enabled Google Cloud project for real renter photos. Google may use submitted data from unpaid services to improve its products. Test with non-sensitive sample photos if you're using unpaid quota. [Gemini API keys](https://ai.google.dev/gemini-api/docs/api-key) · [Google's data-use terms](https://ai.google.dev/gemini-api/docs/terms)
-3. In **Vercel → Project Settings → Environment Variables**, add these values to **Preview**, then redeploy `codex/my-inspections`. Add them to **Production** when you deploy the feature there.
+2. Create an API key in the [Claude Console](https://platform.claude.com/).
+3. Set these variables in the appropriate Vercel environment and redeploy.
 
    | Variable | Value |
    |---|---|
-   | `GEMINI_API_KEY` | The key from Google AI Studio |
+   | `ANTHROPIC_API_KEY` | The Claude API key already used by the case audit |
    | `SUPABASE_SECRET_KEY` | The `sb_secret_` key from **Supabase → Settings → API Keys** for the same project as your project URL |
-   | `GEMINI_MODEL` (optional) | Model override. The default is `gemini-3.8-flash`. |
+   | `ANTHROPIC_MODEL` (optional) | The same Claude model override used by the case audit |
 
    Keep both keys server-side. Their names have no `NEXT_PUBLIC_` prefix. Keep the two existing `NEXT_PUBLIC_SUPABASE_` variables. [Vercel environment variables](https://vercel.com/docs/environment-variables)
-4. Open **My Inspections**, upload a move-in and move-out photo to the same room, then select **Compare photos**. Pick the two photos, name the spot, and confirm that the photos can be sent to Gemini. The app saves the result in Supabase. Open the room on another device and select the same pair to see it again.
+4. Open **My Inspections** and upload a move-in and move-out photo of the same spot to the same room. Select **Compare with Claude** to send the pair for analysis. Enable **Automatically compare photos with Claude** to send the newest pair in each room whenever both phases have photos. This choice is saved for your account in the current browser. Use the photo menus to compare a different pair when a phase has multiple photos. The saved result explains whether the views match, what each photo shows, what changed, and what to do next.
 
-The app reuses the saved result for the same two photo IDs, including the spot and price snapshot submitted with that pair. For pairs too large for the inline Gemini request, the API uploads temporary files to Gemini and requests deletion after processing. Google expires undeleted API files automatically. [Gemini Files API](https://ai.google.dev/gemini-api/docs/files)
-
-### Analyze photos automatically
-
-Tick **Analyze photos automatically** above the inspection photos to skip the manual steps. Whenever a room has both a move-in and a move-out photo, the app sends that room's newest pair to Gemini and shows the result under the room, using the room name as the spot. It runs once per pair, so a saved result is reused instead of sent again, and a failed attempt waits for **Try again**. The choice is off by default because it sends photos to Google, and it is remembered per account in that browser. **Compare other photos** still opens the manual form for older photos or a pricing region.
-
-### Set up repair price ranges
-
-Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region such as `san luis obispo, ca`, a stable code such as `patch_small_drywall_hole`, a short repair title, a low and high amount in cents, a three-letter currency code, a pricing unit, the source, and the effective date. Use currencies with two decimal places. The optional pricing region on the comparison form must match the catalog region. If there is no matching entry, the app saves the repair assessment and shows that a price is unavailable. A comparison keeps a snapshot of the price shown at the time it ran.
+The app reuses the saved Claude result for the same two photo IDs. Existing comparisons from the previous provider can be rerun with Claude by selecting the same photos. The app prepares smaller image copies for analysis and keeps the private originals in Supabase. If the server cannot decode a photo, upload a JPEG, PNG, or WebP copy for comparison.
 
 ## Fill in charges from the deduction letter
 
@@ -175,7 +167,7 @@ Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
 
 The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Anthropic for each answer, and to Google only if Gemini stands in; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
-## Run a live move-out audit
+## Live move-out audit backend
 
 The audit queues one selected photo pair per room when it starts. One Gemini pass assesses the room's condition and a second pass independently checks the same photos. The audit saves both findings. If the passes disagree or a photo is unclear, the room shows **Needs review**. Other rooms keep running while you capture a replacement photo and confirm the new pair. The audit keeps progress in Supabase and workers can continue after the renter closes the browser.
 
@@ -190,6 +182,6 @@ The audit queues one selected photo pair per room when it starts. One Gemini pas
    | `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional. Use the project's [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret for a protected preview. |
 
    You can put these in a local `.env.audit` file and run `node --env-file=.env.audit scripts/audit-worker.mjs`. Keep that file private. The worker reaches only the audit endpoint; the Gemini and Supabase secret keys stay on Vercel. Stop your local worker with Ctrl+C when you finish the demo.
-4. Open **My Inspections → Live move-out audit** on a lease with photos for at least two rooms. Select and confirm the pairs, and leave one room's move-out photo missing. Start the audit. The other rooms should show both review stages. Take the missing photo on your phone, then open **Choose photos and resume this room** and confirm the pair. The room should finish alongside the other results. Try reopening the audit on a second device and verify that a second account cannot see it.
+   The worker can still process existing audit jobs. My Inspections now shows photo comparisons by room.
 
 For local development, put the relevant variables in `.env.local`, then run `npm ci` and `npm run dev`. Add `http://localhost:3000/inspections` to the Supabase redirect allowlist if you test local sign-up. Run `node --test tests/*.test.mjs` with Node.js 24 to check the inspection and audit logic.

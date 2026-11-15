@@ -1,223 +1,156 @@
 'use client';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { comparisonColumns, type SavedComparison } from '@/lib/inspection-comparison';
 import styles from './inspections.module.css';
 
 type PhotoChoice = { id: string; phase: 'move_in' | 'move_out'; original_name: string; uploaded_at: string };
+type ComparisonProps = {
+  supabase: SupabaseClient;
+  roomId: string;
+  roomName: string;
+  autoCompare: boolean;
+  renderPhoto: (id: string) => ReactNode;
+};
+type StoredComparison = SavedComparison & { analyzedWithClaude: boolean };
 
 const labels = {
-  no_damage: 'No damage',
+  no_damage: 'No new visible damage',
   normal_wear_and_tear: 'Normal wear and tear',
-  repair: 'Repair',
+  repair: 'Visible damage',
 };
 
-function ComparisonResult({ result, photoNames }: { result: SavedComparison; photoNames: Map<string, string> }) {
-  const estimate = result.estimate;
-  const currency = estimate && new Intl.NumberFormat(undefined, { style: 'currency', currency: estimate.currency, maximumFractionDigits: 2 });
-  return (
-    <div className={styles.comparisonResult}>
-      <h4>{result.category ? labels[result.category] : 'Needs review'} · {result.spot}</h4>
-      <p>{result.summary}</p>
-      <dl>
-        <dt>Move-in</dt><dd>{photoNames.get(result.move_in_photo_id) ?? 'Move-in photo'}</dd>
-        <dt>Move-out</dt><dd>{photoNames.get(result.move_out_photo_id) ?? 'Move-out photo'}</dd>
-      </dl>
-      {estimate && currency ? (
-        <p><strong>Rough estimate</strong> {currency.format(estimate.low_cents / 100)}–{currency.format(estimate.high_cents / 100)} {estimate.unit} for {estimate.title}. {estimate.source}, {estimate.effective_on}.</p>
-      ) : result.category === 'repair' && <p>No matching regional price is available for this repair.</p>}
-      <p className={styles.comparisonNote}>AI assessment based on visible evidence. Review it before relying on it.</p>
-    </div>
-  );
-}
-
-type ComparisonInput = { moveInId: string; moveOutId: string; spot: string; region?: string };
-
-async function requestComparison(supabase: SupabaseClient, input: ComparisonInput) {
+async function requestComparison(supabase: SupabaseClient, moveInPhotoId: string, moveOutPhotoId: string, spot: string) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Sign in again to compare photos.');
   const response = await fetch('/api/inspections/compare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({
-      moveInPhotoId: input.moveInId, moveOutPhotoId: input.moveOutId,
-      spot: input.spot, region: input.region ?? '', consent: true,
-    }),
+    body: JSON.stringify({ moveInPhotoId, moveOutPhotoId, spot, consent: true }),
   });
   const result: { comparison?: SavedComparison; error?: string } = await response.json().catch(() => ({}));
   if (!response.ok || !result.comparison) throw new Error(result.error ?? 'Could not complete the comparison. Try again.');
   return result.comparison;
 }
 
-export function ComparePhotos({ supabase, roomId, roomName, auto, photos, renderPhoto }: {
-  supabase: SupabaseClient;
-  roomId: string;
-  roomName: string;
-  // The renter chose to have each room's newest pair analyzed without asking each time.
-  auto: boolean;
-  photos: PhotoChoice[];
-  renderPhoto: (id: string) => ReactNode;
-}) {
+export function ComparePhotos({ photos, ...props }: ComparisonProps & { photos: PhotoChoice[] }) {
   const moveIn = photos.filter((photo) => photo.phase === 'move_in');
   const moveOut = photos.filter((photo) => photo.phase === 'move_out');
-  const [open, setOpen] = useState(false);
-  const [results, setResults] = useState<SavedComparison[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState(false);
-  const [autoBusy, setAutoBusy] = useState(false);
-  const [autoError, setAutoError] = useState('');
-  const attempted = useRef(new Set<string>());
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void supabase.from('inspection_comparisons').select(comparisonColumns)
-      .eq('room_id', roomId).order('created_at', { ascending: false })
-      .abortSignal(controller.signal).returns<SavedComparison[]>().then(({ data, error }) => {
-        if (controller.signal.aborted) return;
-        if (error) setHistoryError(true);
-        else setResults(data);
-        setHistoryLoading(false);
-      });
-    return () => controller.abort();
-  }, [supabase, roomId]);
-
-  const saveResult = useCallback((saved: SavedComparison) => {
-    setResults((current) => [saved, ...current.filter(({ id }) => id !== saved.id)]);
-  }, []);
-
-  // Photos arrive newest first, so the first of each phase is the latest pair.
-  const newestIn = moveIn[0]?.id;
-  const newestOut = moveOut[0]?.id;
-  const newestResult = results.find((result) => result.move_in_photo_id === newestIn && result.move_out_photo_id === newestOut);
-  const hasNewestResult = Boolean(newestResult);
-
-  const analyze = useCallback(async (moveInId: string, moveOutId: string) => {
-    setAutoBusy(true);
-    setAutoError('');
-    try {
-      saveResult(await requestComparison(supabase, { moveInId, moveOutId, spot: roomName.trim().slice(0, 120) || 'Room' }));
-    } catch (cause) {
-      setAutoError(cause instanceof Error ? cause.message : 'Could not analyze the photos.');
-    } finally {
-      setAutoBusy(false);
-    }
-  }, [supabase, roomName, saveResult]);
-
-  useEffect(() => {
-    if (!auto || historyLoading || historyError || hasNewestResult || !newestIn || !newestOut) return;
-    const pair = `${newestIn}/${newestOut}`;
-    // One automatic attempt per pair; a failure waits for the renter to retry.
-    if (attempted.current.has(pair)) return;
-    attempted.current.add(pair);
-    queueMicrotask(() => void analyze(newestIn, newestOut));
-  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, analyze]);
-
   if (!moveIn.length || !moveOut.length) return null;
-  const names = new Map(photos.map(({ id, original_name }) => [id, original_name]));
+
+  // The gallery sorts newest first. Reset the selection when an upload creates a new pair.
+  return <RoomPhotoComparison key={`${moveIn[0].id}/${moveOut[0].id}`} {...props} moveIn={moveIn} moveOut={moveOut} />;
+}
+
+function RoomPhotoComparison({ moveIn, moveOut, renderPhoto, ...props }: ComparisonProps & {
+  moveIn: PhotoChoice[];
+  moveOut: PhotoChoice[];
+}) {
+  const pickerId = useId();
+  const [moveInId, setMoveInId] = useState(moveIn[0].id);
+  const [moveOutId, setMoveOutId] = useState(moveOut[0].id);
+  const choices = [
+    { phase: 'move-in', label: 'Move-in photo', photos: moveIn, id: moveInId, select: setMoveInId },
+    { phase: 'move-out', label: 'Move-out photo', photos: moveOut, id: moveOutId, select: setMoveOutId },
+  ].filter(({ photos }) => photos.length > 1);
+
   return (
     <div className={styles.comparison}>
-      {autoBusy && <p role="status">Our system is analyzing the newest move-in and move-out photos for this room…</p>}
-      {autoError && !autoBusy && (
-        <p role="alert" className={styles.error}>
-          Automatic analysis didn’t finish: {autoError}{' '}
-          <button type="button" className={styles.secondary} onClick={() => void analyze(newestIn!, newestOut!)}>Try again</button>
-        </p>
+      <h4>Photo comparison</h4>
+      {choices.length > 0 && (
+        <div className={`${styles.phases} ${styles.comparisonPair}`}>
+          {choices.map(({ phase, label, photos, id, select }) => (
+            <div key={phase}>
+              <label><span id={`${pickerId}-${phase}`}>{label}</span>
+                <select aria-labelledby={`${pickerId}-${phase}`} value={id} onChange={(event) => select(event.target.value)}>
+                  {photos.map((photo) => (
+                    <option key={photo.id} value={photo.id}>{photo.original_name} · {new Date(photo.uploaded_at).toLocaleString()}</option>
+                  ))}
+                </select>
+              </label>
+              {renderPhoto(id)}
+            </div>
+          ))}
+        </div>
       )}
-      {newestResult && !open && <div role="status"><ComparisonResult result={newestResult} photoNames={names} /></div>}
-      <button type="button" className={styles.secondary} aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? 'Hide comparisons' : newestResult ? 'Compare other photos' : 'Compare photos'}
-      </button>
-      {open && (
-        <ComparisonForm supabase={supabase} moveIn={moveIn} moveOut={moveOut} renderPhoto={renderPhoto}
-          results={results} historyLoading={historyLoading || autoBusy} historyError={historyError} onSaved={saveResult} />
-      )}
+      <PairAssessment key={`${moveInId}/${moveOutId}`} supabase={props.supabase}
+        roomId={props.roomId} roomName={props.roomName} moveInId={moveInId} moveOutId={moveOutId}
+        autoCompare={props.autoCompare && moveInId === moveIn[0].id && moveOutId === moveOut[0].id} />
     </div>
   );
 }
 
-function ComparisonForm({ supabase, moveIn, moveOut, renderPhoto, results, historyLoading, historyError, onSaved }: {
-  supabase: SupabaseClient;
-  moveIn: PhotoChoice[];
-  moveOut: PhotoChoice[];
-  renderPhoto: (id: string) => ReactNode;
-  results: SavedComparison[];
-  historyLoading: boolean;
-  historyError: boolean;
-  onSaved: (saved: SavedComparison) => void;
+function PairAssessment({ supabase, roomId, roomName, moveInId, moveOutId, autoCompare }: Omit<ComparisonProps, 'renderPhoto'> & {
+  moveInId: string;
+  moveOutId: string;
 }) {
-  const [moveInId, setMoveInId] = useState(moveIn[0].id);
-  const [moveOutId, setMoveOutId] = useState(moveOut[0].id);
+  const disclosureId = useId();
+  const [result, setResult] = useState<StoredComparison | null>();
+  const [historyError, setHistoryError] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const attempted = useRef(false);
 
-  const selectedResult = results.find((result) => result.move_in_photo_id === moveInId && result.move_out_photo_id === moveOutId);
-  const previousResults = results.filter((result) => result.id !== selectedResult?.id);
-  const names = new Map([...moveIn, ...moveOut].map(({ id, original_name }) => [id, original_name]));
+  useEffect(() => {
+    const controller = new AbortController();
+    void supabase.from('inspection_comparisons').select(`${comparisonColumns}, model`)
+      .eq('room_id', roomId).eq('move_in_photo_id', moveInId).eq('move_out_photo_id', moveOutId)
+      .abortSignal(controller.signal).maybeSingle<SavedComparison & { model: string }>().then(({ data, error }) => {
+        if (controller.signal.aborted) return;
+        setHistoryError(Boolean(error));
+        setResult(data ? { ...data, analyzedWithClaude: data.model.startsWith('claude-') } : null);
+      });
+    return () => controller.abort();
+  }, [supabase, roomId, moveInId, moveOutId]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || selectedResult) return;
-    const form = new FormData(event.currentTarget);
-    if (form.get('consent') !== 'on') return;
+  const compare = useCallback(async () => {
+    attempted.current = true;
     setBusy(true);
     setError('');
     try {
-      onSaved(await requestComparison(supabase, {
-        moveInId, moveOutId, spot: String(form.get('spot') ?? ''), region: String(form.get('region') ?? ''),
-      }));
+      const saved = await requestComparison(supabase, moveInId, moveOutId, roomName);
+      setResult({ ...saved, analyzedWithClaude: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not compare the photos.');
     } finally {
       setBusy(false);
     }
-  }
+  }, [supabase, moveInId, moveOutId, roomName]);
+
+  useEffect(() => {
+    if (!autoCompare || historyError || result !== null || busy || attempted.current) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active && !attempted.current) void compare();
+    });
+    return () => { active = false; };
+  }, [autoCompare, busy, compare, historyError, result]);
 
   return (
-    <div className={styles.comparisonForm}>
-      <p>Choose photos that show the same spot from a similar angle.</p>
-      <form className={styles.form} onSubmit={submit}>
-        <fieldset className={styles.form} disabled={busy}>
-          <div className={`${styles.phases} ${styles.comparisonPair}`}>
-            {[
-              { label: 'Move-in photo', choices: moveIn, id: moveInId, select: setMoveInId },
-              { label: 'Move-out photo', choices: moveOut, id: moveOutId, select: setMoveOutId },
-            ].map(({ label, choices, id, select }) => (
-              <div key={label}>
-                <label>{label}
-                  <select value={id} onChange={(event) => { select(event.target.value); setError(''); }}>
-                    {choices.map((photo) => <option key={photo.id} value={photo.id}>{photo.original_name} · {new Date(photo.uploaded_at).toLocaleString()}</option>)}
-                  </select>
-                </label>
-                {renderPhoto(id)}
-              </div>
-            ))}
-          </div>
-          {!selectedResult && (
-            <>
-              <div className={styles.phases}>
-                <label>Spot name<input name="spot" placeholder="e.g. Floor next to sink" maxLength={120} required /></label>
-                <label>Pricing region (optional)<input name="region" placeholder="e.g. San Luis Obispo, CA" maxLength={120} /></label>
-              </div>
-              <label className={styles.comparisonConsent}>
-                <input key={`${moveInId}/${moveOutId}`} name="consent" type="checkbox" required />
-                <span>These photos show the same spot. I agree to let our system analyze both photos.</span>
-              </label>
-              <button className={styles.primary} disabled={busy || historyLoading}>{busy ? 'Comparing…' : 'Run comparison'}</button>
-            </>
-          )}
-        </fieldset>
-      </form>
-      {busy && <p role="status">Our system is reviewing the photos and saving the result.</p>}
-      {historyError && <p role="status">Could not load saved comparisons. If this persists, check the Supabase migration.</p>}
-      {error && <p role="alert" className={styles.error}>{error}</p>}
-      {selectedResult && <div role="status"><ComparisonResult result={selectedResult} photoNames={names} /></div>}
-      {previousResults.length > 0 && (
-        <details className={styles.comparisonHistory}>
-          <summary>Saved comparisons ({previousResults.length})</summary>
-          {previousResults.map((result) => <ComparisonResult key={result.id} result={result} photoNames={names} />)}
-        </details>
+    <>
+      {result === undefined && <p role="status">Loading comparison…</p>}
+      {busy && <p role="status">Comparing photos…</p>}
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      {result !== undefined && !result?.analyzedWithClaude && !busy && (
+        <>
+          <p id={disclosureId} className={styles.comparisonNote}>Sends these two photos to Claude for analysis.</p>
+          <button type="button" className={styles.secondary} aria-describedby={disclosureId} onClick={() => void compare()}>
+            {error ? 'Retry comparison' : 'Compare with Claude'}
+          </button>
+        </>
       )}
-    </div>
+      {result && (
+        <div className={styles.comparisonResult} role="status">
+          <p><strong>{result.category ? labels[result.category] : 'Needs review'}</strong></p>
+          {result.summary.split('\n').map((line, index) => {
+            const split = line.indexOf(': ');
+            return result.analyzedWithClaude && split > 0
+              ? <p key={index}><strong>{line.slice(0, split)}</strong> {line.slice(split + 2)}</p>
+              : <p key={index}>{line}</p>;
+          })}
+        </div>
+      )}
+    </>
   );
 }

@@ -74,14 +74,14 @@ export function validateComparisonPair<T extends { id: string; phase: string; ro
 export function normalizeAssessment(value: unknown, bands: PriceBand[]): Assessment {
   const { comparable, category, summary, repair_code } = object(value);
   if (typeof comparable !== 'boolean' || typeof summary !== 'string' || !summary.trim() || summary.length > 2000) {
-    throw new Error('Gemini returned an invalid assessment.');
+    throw new Error('The photo assessment was invalid.');
   }
   if (/[$£€¥]\s*\d|\b\d[\d,.]*\s*(?:USD|CAD|AUD|EUR|GBP|dollars?|bucks)\b/i.test(summary)) {
-    throw new Error('Gemini returned a price outside the approved catalog.');
+    throw new Error('The photo assessment included a price outside the approved catalog.');
   }
   if (!comparable) return { status: 'needs_review', category: null, summary: summary.trim(), repair_code: null, estimate: null };
   const validCategory = categories.find((candidate) => candidate === category);
-  if (!validCategory) throw new Error('Gemini returned an unknown category.');
+  if (!validCategory) throw new Error('The photo assessment included an unknown category.');
   const estimate = validCategory === 'repair' ? bands.find((band) => band.code === repair_code) ?? null : null;
   return {
     status: 'ready', category: validCategory, summary: summary.trim(),

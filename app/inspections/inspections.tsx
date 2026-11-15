@@ -1,7 +1,7 @@
 'use client';
 
 import type { SupabaseClient, User } from '@supabase/supabase-js';
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
 import { supabase as client } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -10,7 +10,6 @@ import { TermsAgreementText } from '@/components/auth/terms-agreement';
 import { OAuthButton } from '@/components/auth/frame';
 import { FileDrop } from '@/components/file-drop';
 import { ComparePhotos } from './compare-photos';
-import { MoveOutAudit } from './move-out-audit';
 import styles from './inspections.module.css';
 
 const bucket = 'inspection-photos';
@@ -24,7 +23,6 @@ type Lease = { id: string; name: string };
 type Photo = { id: string; phase: Phase; original_name: string; content_type: string; storage_path: string; uploaded_at: string };
 type Room = { id: string; name: string; inspection_photos: Photo[] };
 type Gallery = { rooms: Room[]; urls: Record<string, string> };
-type CaptureControls = { prepare: (roomId: string, phase: Phase) => void };
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -207,23 +205,22 @@ function LeaseList({ supabase, user }: { supabase: SupabaseClient; user: User })
 }
 
 function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClient; leaseId: string; userId: string }) {
-  const capture = useRef<CaptureControls>(null);
   const [gallery, setGallery] = useState<Gallery>({ rooms: [], urls: {} });
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const galleryRequest = useRef(0);
-  // Sending photos to Gemini without asking each time is the renter's choice, kept per account in this browser.
-  const autoKey = `tenant-shield:auto-analysis:${userId}`;
-  const [auto, setAuto] = useState(() => {
+  const autoKey = `tenant-shield:claude-auto-comparison:${userId}`;
+  const [autoCompare, setAutoCompare] = useState(() => {
     try { return localStorage.getItem(autoKey) === 'on'; } catch { return false; }
   });
-  function chooseAuto(on: boolean) {
-    setAuto(on);
+
+  function changeAutoCompare(enabled: boolean) {
+    setAutoCompare(enabled);
     try {
-      if (on) localStorage.setItem(autoKey, 'on');
+      if (enabled) localStorage.setItem(autoKey, 'on');
       else localStorage.removeItem(autoKey);
-    } catch { /* The choice still applies until the page is closed. */ }
+    } catch { /* The choice still applies while this lease is open. */ }
   }
 
   const loadGallery = useCallback(async () => {
@@ -289,21 +286,22 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
           <button className={styles.secondary} disabled={adding}>Add room</button>
         </form>
       </section>
-      {gallery.rooms.length > 0 && <CapturePhoto supabase={supabase} userId={userId} rooms={gallery.rooms} onSaved={loadGallery} captureRef={capture} />}
-      {gallery.rooms.length > 0 && <MoveOutAudit supabase={supabase} leaseId={leaseId} rooms={gallery.rooms} refreshPhotos={loadGallery}
-        onRetake={(roomId, phase) => capture.current?.prepare(roomId, phase)} renderPhoto={(room, id) => {
-        const photo = gallery.rooms.find((item) => item.id === room.id)?.inspection_photos.find((item) => item.id === id);
-        return photo ? <PhotoPreview key={`${id}/${gallery.urls[photo.storage_path]}`} url={gallery.urls[photo.storage_path]} photo={photo} /> : null;
-      }} />}
+      {gallery.rooms.length > 0 && <CapturePhoto supabase={supabase} userId={userId} rooms={gallery.rooms} onSaved={loadGallery} />}
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Inspection photos</h2>
           <button type="button" className={styles.secondary} onClick={loadGallery}>Refresh photos</button>
         </div>
-        <label className={styles.comparisonConsent}>
-          <input type="checkbox" checked={auto} onChange={(event) => chooseAuto(event.target.checked)} />
-          <span>Analyze photos automatically. When a room has a move-in and a move-out photo, I agree to let our system analyze the newest pair and show the result here.</span>
-        </label>
+        {gallery.rooms.length > 0 && (
+          <>
+            <label className={styles.comparisonConsent}>
+              <input type="checkbox" checked={autoCompare} onChange={(event) => changeAutoCompare(event.target.checked)}
+                aria-describedby="auto-comparison-description" />
+              <span>Automatically compare photos with Claude</span>
+            </label>
+            <p id="auto-comparison-description" className={styles.comparisonNote}>Sends the newest move-in and move-out photos in each room to Claude.</p>
+          </>
+        )}
         {!loaded && <p role="status">Loading photos…</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         {loaded && !error && gallery.rooms.length === 0 && <p>Add a room to start taking photos.</p>}
@@ -326,7 +324,7 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
                 </div>
               ))}
             </div>
-            <ComparePhotos supabase={supabase} roomId={room.id} roomName={room.name} auto={auto} photos={room.inspection_photos} renderPhoto={(id) => {
+            <ComparePhotos supabase={supabase} roomId={room.id} roomName={room.name} autoCompare={autoCompare} photos={room.inspection_photos} renderPhoto={(id) => {
               const photo = room.inspection_photos.find((item) => item.id === id);
               return photo ? <PhotoPreview key={`${id}/${gallery.urls[photo.storage_path]}`} url={gallery.urls[photo.storage_path]} photo={photo} /> : null;
             }} />
@@ -382,12 +380,11 @@ function PhotoPreview({ url, photo }: { url?: string; photo: Photo }) {
   );
 }
 
-function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
+function CapturePhoto({ supabase, userId, rooms, onSaved }: {
   supabase: SupabaseClient;
   userId: string;
   rooms: Room[];
   onSaved: () => Promise<void>;
-  captureRef: Ref<CaptureControls>;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -396,23 +393,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
   const [message, setMessage] = useState('');
   const [roomId, setRoomId] = useState(rooms[0]?.id ?? '');
   const [phase, setPhase] = useState<Phase>('move_in');
-  const [auditRoomId, setAuditRoomId] = useState('');
-  const captureForm = useRef<HTMLFormElement>(null);
   const pendingId = useRef<string | null>(null);
-
-  useImperativeHandle(captureRef, () => ({
-    prepare(room, phase) {
-      if (busy) return;
-      pendingId.current = null;
-      setRoomId(room);
-      setPhase(phase);
-      setAuditRoomId(room);
-      setFile(null);
-      for (const input of captureForm.current?.querySelectorAll<HTMLInputElement>('input[type="file"]') ?? []) input.value = '';
-      setError('');
-      setMessage('');
-    },
-  }), [busy]);
 
   function selectFile(next: File | null) {
     pendingId.current = null;
@@ -461,8 +442,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
       setFile(null);
       for (const input of form.querySelectorAll<HTMLInputElement>('input[type="file"]')) input.value = '';
       // The photo is stored: say so now. Refreshing the gallery (a room query and
-      // signed links for every photo) and any automatic analysis that follows
-      // run afterward, each with its own status.
+      // signed links for every photo) runs afterward with its own status.
       setMessage('Photo saved. You can open it on another device with the same account.');
       setBusy(false);
       setRefreshing(true);
@@ -478,7 +458,7 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
   return (
     <section id="capture-inspection-photo" className={styles.panel}>
       <h2>Add an inspection photo</h2>
-      <form ref={captureForm} onSubmit={uploadPhoto}>
+      <form onSubmit={uploadPhoto}>
         <fieldset className={styles.form} disabled={busy}>
           <div className={styles.phases}>
             <label>Room<select name="room" value={roomId} onChange={(event) => { pendingId.current = null; setRoomId(event.target.value); }}>
@@ -499,7 +479,6 @@ function CapturePhoto({ supabase, userId, rooms, onSaved, captureRef }: {
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {message && <p role="status">{message}</p>}
       {refreshing && <p role="status">Refreshing your photos…</p>}
-      {auditRoomId && <p><a href={`#audit-room-${auditRoomId}`} className={styles.back}>Back to audit room</a></p>}
     </section>
   );
 }

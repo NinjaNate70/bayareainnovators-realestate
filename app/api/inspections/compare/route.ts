@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { assessInspectionPair } from '@/lib/gemini-inspection';
+import { assessInspectionPair, InspectionPhotoError } from '@/lib/claude-inspection';
+import { defaultClaudeModel } from '@/lib/claude-json';
 import {
   comparisonColumns,
   parseComparisonRequest,
@@ -20,8 +21,8 @@ export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
-  const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const model = process.env.ANTHROPIC_MODEL || defaultClaudeModel;
   if (!url || !publishableKey || !secretKey || !apiKey) {
     return respond('Photo comparison is unavailable. Ask your project admin to finish the setup.', 503);
   }
@@ -68,14 +69,17 @@ export async function POST(request: Request) {
   const claim = await admin.from(table).insert({
     ...match, room_id: pair[0].room_id, spot: input.spot, region: input.region, model,
   }).select('id').single();
+  let legacy: { id: string; model: string } | undefined;
   if (claim.error?.code === '23505') {
-    const existing = await renter.from(table).select(comparisonColumns).match(match).maybeSingle<SavedComparison>();
+    const existing = await renter.from(table).select(`${comparisonColumns}, model`).match(match).maybeSingle<SavedComparison & { model: string }>();
     if (existing.error) return respond('Could not load the saved comparison.', 503);
-    if (existing.data) return Response.json({ comparison: existing.data });
-    return respond('This pair is being compared. Try again shortly.', 409);
+    if (!existing.data) return respond('This pair is being compared. Try again shortly.', 409);
+    const { model: savedModel, ...comparison } = existing.data;
+    if (savedModel.startsWith('claude-')) return Response.json({ comparison });
+    legacy = { id: comparison.id, model: savedModel };
   }
-  if (claim.error || !claim.data) return respond('Could not start the comparison.', 503);
-  const claimId = claim.data.id;
+  const claimId = legacy?.id ?? claim.data?.id;
+  if (!claimId) return respond('Could not start the comparison.', 503);
 
   try {
     const bucket = renter.storage.from('inspection-photos');
@@ -92,18 +96,19 @@ export async function POST(request: Request) {
     if (prices.error) throw new Error('Failed to load repair prices.');
 
     const result = await assessInspectionPair({
-      apiKey, model, bands: prices.data ?? [],
-      before: { data: before.data, contentType: pair[0].content_type },
-      after: { data: after.data, contentType: pair[1].content_type },
+      apiKey, model, spot: input.spot, bands: prices.data ?? [], before: before.data, after: after.data,
     });
-    const saved = await admin.from(table).update({ ...result.assessment, model: result.model })
-      .eq('id', claimId).eq('user_id', userId).eq('status', 'processing')
-      .select(comparisonColumns).single<SavedComparison>();
-    if (saved.error || !saved.data) throw new Error('Failed to save a comparison.');
-    return Response.json({ comparison: saved.data });
+    const write = admin.from(table).update({ ...result.assessment, spot: input.spot, region: input.region, model: result.model })
+      .eq('id', claimId).eq('user_id', userId);
+    const saved = await (legacy ? write.eq('model', legacy.model) : write.eq('status', 'processing'))
+      .select(comparisonColumns).maybeSingle<SavedComparison>();
+    if (saved.error) throw new Error('Failed to save a comparison.');
+    if (saved.data) return Response.json({ comparison: saved.data });
+    return respond('This comparison changed while it was being reviewed. Open it again.', 409);
   } catch (error) {
     console.warn('Photo comparison failed:', error instanceof Error ? error.message : 'Unknown error');
-    await admin.from(table).delete().eq('id', claimId).eq('user_id', userId).eq('status', 'processing');
+    if (!legacy) await admin.from(table).delete().eq('id', claimId).eq('user_id', userId).eq('status', 'processing');
+    if (error instanceof InspectionPhotoError) return respond(error.message, 422);
     return respond('Could not complete the comparison. Try again in a moment.', 502);
   }
 }
