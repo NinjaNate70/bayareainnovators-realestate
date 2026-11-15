@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Download,
+  ExternalLink,
   FileText,
   FileUp,
   FolderOpen,
@@ -16,16 +17,21 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/provider";
 import { getBackend, hosted } from "@/lib/backend";
-import { getFile, unwrap } from "@/lib/cases";
+import { unwrap } from "@/lib/cases";
 import { fromRow } from "@/lib/db/mapping";
 import { supabase } from "@/lib/supabase/client";
 import {
   displayName,
   fileSize,
+  libraryAccept,
   libraryBucket,
   libraryFileError,
   libraryFolder,
+  libraryKinds,
+  libraryType,
   storedName,
+  uploadProblem,
+  viewable,
 } from "@/lib/document-library";
 
 type Saved = { path: string; name: string; size: string; added: string; image: boolean };
@@ -54,6 +60,8 @@ export function DocumentsLibrary() {
   const [setup, setSetup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  // The file being fetched, so its buttons can show progress.
+  const [working, setWorking] = useState("");
   const latch = useRef(false);
 
   const loadSaved = useCallback(async () => {
@@ -67,11 +75,13 @@ export function DocumentsLibrary() {
     if (error) {
       // A missing bucket means the library's migration hasn't been run.
       if (/bucket/i.test(error.message)) setSetup(true);
-      else setError("We couldn’t load your documents. Refresh to try again.");
+      else
+        setError(
+          `We couldn’t load your documents (${error.message.slice(0, 120)}). Refresh to try again.`,
+        );
       setSaved([]);
       return;
     }
-    setSetup(false);
     setSaved(
       data
         // Storage lists a placeholder for an empty folder; skip it.
@@ -116,55 +126,71 @@ export function DocumentsLibrary() {
   }, [userId, loadSaved]);
 
   async function add(list: FileList | null) {
-    if (!list || !supabase || !userId || latch.current) return;
+    if (!list?.length || !supabase || !userId || latch.current) return;
     latch.current = true;
     setBusy(true);
     setError("");
     setStatus("");
+    let count = 0;
     try {
-      let count = 0;
       for (const file of Array.from(list)) {
         const problem = libraryFileError(file);
         if (problem) throw new Error(problem);
         const { error } = await supabase.storage
           .from(libraryBucket)
           .upload(`${libraryFolder(userId)}/${storedName(file.name)}`, file, {
-            contentType: file.type,
+            contentType: libraryType(file),
           });
-        if (error)
-          throw new Error(
-            /bucket/i.test(error.message)
-              ? "Your document library isn’t set up yet."
-              : `${file.name} couldn’t be saved. Try again.`,
-          );
+        if (error) {
+          const found = uploadProblem(file.name, error.message);
+          if (found.setup) setSetup(true);
+          throw new Error(found.text);
+        }
         count += 1;
       }
-      setStatus(`${count} document${count === 1 ? "" : "s"} saved.`);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The file couldn’t be saved.",
       );
     } finally {
+      if (count)
+        setStatus(`${count} document${count === 1 ? "" : "s"} saved.`);
       await loadSaved();
       setBusy(false);
       latch.current = false;
     }
   }
-  async function open(path: string) {
-    if (!supabase) return;
+  // Files are fetched with the renter's own session and handed to the browser
+  // from memory, so nothing depends on pop-ups or on a link that can expire.
+  function hand(blob: Blob, name: string, inTab: boolean) {
+    const url = URL.createObjectURL(blob);
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    if (inTab && window.open(url, "_blank")) return;
+    // Save it instead when a new tab isn't wanted or the browser blocked it.
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+  async function fetchSaved(file: Saved, inTab: boolean) {
+    if (!supabase || working) return;
     setError("");
-    // Open the tab first so the browser treats it as the renter's own click.
-    const tab = window.open("", "_blank", "noopener=no");
+    setStatus("");
+    setWorking(file.path);
     const { data, error } = await supabase.storage
       .from(libraryBucket)
-      .createSignedUrl(path, 300);
+      .download(file.path);
+    setWorking("");
     if (error || !data) {
-      tab?.close();
-      setError("We couldn’t open that document. Try again.");
+      setError(
+        `We couldn’t open ${file.name}${error?.message ? ` (${error.message.slice(0, 120)})` : ""}. Try again.`,
+      );
       return;
     }
-    if (tab) tab.location.replace(data.signedUrl);
-    else window.location.assign(data.signedUrl);
+    hand(data, file.name, inTab);
+    if (!inTab) setStatus(`${file.name} downloaded.`);
   }
   async function remove(file: Saved) {
     if (!supabase) return;
@@ -177,17 +203,20 @@ export function DocumentsLibrary() {
     else setStatus(`${file.name} deleted.`);
     await loadSaved();
   }
-  async function openCaseFile(file: CaseFile) {
+  async function fetchCaseFile(file: CaseFile, inTab: boolean) {
+    const { path, bucket, name } = file.evidence;
+    if (!path || !bucket || working) return;
     setError("");
-    const tab = window.open("", "_blank", "noopener=no");
-    try {
-      const url = await getFile(file.caseId, file.evidence);
-      if (tab) tab.location.replace(url);
-      else window.location.assign(url);
-    } catch {
-      tab?.close();
-      setError(`We couldn’t open ${file.evidence.name}. Try again.`);
+    setStatus("");
+    setWorking(`${file.caseId}/${file.evidence.id}`);
+    const result = await getBackend().storage.from(bucket).download(path);
+    setWorking("");
+    if (result.error || !result.data) {
+      setError(`We couldn’t open ${name}. Try again.`);
+      return;
     }
+    hand(result.data, name, inTab);
+    if (!inTab) setStatus(`${name} downloaded.`);
   }
 
   return (
@@ -207,7 +236,7 @@ export function DocumentsLibrary() {
           {error}
         </p>
       )}
-      <p className="sr-only" role="status">
+      <p className={status ? "notice" : "sr-only"} role="status">
         {status}
       </p>
 
@@ -220,13 +249,16 @@ export function DocumentsLibrary() {
             Saving documents outside a case needs a hosted account. Documents
             you add to a case are listed below.
           </p>
-        ) : setup ? (
-          <p className="notice">
-            Your document library isn’t set up yet. Ask your project admin to
-            run the document library migration in Supabase.
-          </p>
         ) : (
           <>
+            {setup && (
+              <p className="notice" role="alert">
+                Your document library isn’t set up yet, so files can’t be saved
+                here. Your project admin needs to run the document library
+                migration (20261115000300_document_library.sql) in the Supabase
+                SQL Editor, then reload this page.
+              </p>
+            )}
             <div className="upload-group">
               <label className="field-label" htmlFor={inputId}>
                 Add documents
@@ -244,14 +276,14 @@ export function DocumentsLibrary() {
                   {busy ? "Saving…" : "Drop files here, or browse"}
                 </strong>
                 <span className="small muted">
-                  PDF, JPG or PNG · up to 10MB each
+                  {libraryKinds} · up to 20MB each
                 </span>
                 <input
                   id={inputId}
                   type="file"
                   multiple
                   disabled={busy}
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept={libraryAccept}
                   aria-describedby={`${inputId}-hint`}
                   onChange={(e) => {
                     void add(e.target.files);
@@ -288,13 +320,31 @@ export function DocumentsLibrary() {
                           .join(" · ")}
                       </small>
                     </span>
+                    {viewable(file.name) && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Open ${file.name}`}
+                        title="Open in a new tab"
+                        disabled={working === file.path}
+                        onClick={() => void fetchSaved(file, true)}
+                      >
+                        <ExternalLink size={18} aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label={`Open ${file.name}`}
-                      onClick={() => void open(file.path)}
+                      aria-label={`Download ${file.name}`}
+                      title="Download"
+                      disabled={working === file.path}
+                      onClick={() => void fetchSaved(file, false)}
                     >
-                      <Download size={18} aria-hidden="true" />
+                      {working === file.path ? (
+                        <LoaderCircle className="spin" size={18} aria-hidden="true" />
+                      ) : (
+                        <Download size={18} aria-hidden="true" />
+                      )}
                     </button>
                     <button
                       type="button"
@@ -354,13 +404,31 @@ export function DocumentsLibrary() {
                       ` · ${fileSize(file.evidence.size)}`}
                   </small>
                 </span>
+                {viewable(file.evidence.name) && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Open ${file.evidence.name}`}
+                    title="Open in a new tab"
+                    disabled={working === `${file.caseId}/${file.evidence.id}`}
+                    onClick={() => void fetchCaseFile(file, true)}
+                  >
+                    <ExternalLink size={18} aria-hidden="true" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`Open ${file.evidence.name}`}
-                  onClick={() => void openCaseFile(file)}
+                  aria-label={`Download ${file.evidence.name}`}
+                  title="Download"
+                  disabled={working === `${file.caseId}/${file.evidence.id}`}
+                  onClick={() => void fetchCaseFile(file, false)}
                 >
-                  <Download size={18} aria-hidden="true" />
+                  {working === `${file.caseId}/${file.evidence.id}` ? (
+                    <LoaderCircle className="spin" size={18} aria-hidden="true" />
+                  ) : (
+                    <Download size={18} aria-hidden="true" />
+                  )}
                 </button>
               </li>
             ))}

@@ -102,10 +102,10 @@ It uses the same key as the audit (`ANTHROPIC_API_KEY`, with `GEMINI_API_KEY` as
 
 **Documents** in the workspace navigation opens `/documents`, one place for everything a renter has uploaded.
 
-- **Saved documents** are files kept outside any case: leases, receipts, letters, photos. The renter can add several at once (PDF, JPG or PNG, up to 10 MB each), open one through a private link that expires after five minutes, or delete it. These files are not read by the audit or the assistant.
-- **From your cases** lists every file attached to a case, with a link to that case.
+- **Saved documents** are files kept outside any case: leases, receipts, letters, photos. The renter can add several at once (PDF, Word, Excel, text, CSV, JPG, PNG, WebP or HEIC, up to 20 MB each), **Download** any of them under its original name, **Open** PDFs, images and text in a new tab, or delete one. These files are not read by the audit or the assistant.
+- **From your cases** lists every file attached to a case, with a link to that case. These can be opened and downloaded the same way.
 
-Run the [document library migration](supabase/migrations/20261115000300_document_library.sql) once in the Supabase SQL Editor. It creates the private `library` bucket and a policy that limits each renter to files under their own user id. Until then the page shows the case files and says the library isn't set up. Deleting an account removes its library files too. Saving documents outside a case needs `NEXT_PUBLIC_BACKEND=supabase`; the browser-only demo lists case files only.
+Run the [document library migration](supabase/migrations/20261115000300_document_library.sql) once in the Supabase SQL Editor. It creates the private `library` bucket and a policy that limits each renter to files under their own user id. Run it again after an update to this file: it brings an existing library up to the current file types and size limit. Until then the page shows the case files, and trying to add a file explains that this migration is needed. Deleting an account removes its library files too. Saving documents outside a case needs `NEXT_PUBLIC_BACKEND=supabase`; the browser-only demo lists case files only.
 
 ## Let renters explain their situation
 
