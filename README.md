@@ -82,9 +82,33 @@ Uploads go directly to Supabase. The app keeps the original file and supports JP
 
 The app reuses the saved result for the same two photo IDs, including the spot and price snapshot submitted with that pair. For pairs too large for the inline Gemini request, the API uploads temporary files to Gemini and requests deletion after processing. Google expires undeleted API files automatically. [Gemini Files API](https://ai.google.dev/gemini-api/docs/files)
 
+### Analyse photos automatically
+
+Tick **Analyse photos automatically** above the inspection photos to skip the manual steps. Whenever a room has both a move-in and a move-out photo, the app sends that room's newest pair to Gemini and shows the result under the room, using the room name as the spot. It runs once per pair, so a saved result is reused instead of sent again, and a failed attempt waits for **Try again**. The choice is off by default because it sends photos to Google, and it is remembered per account in that browser. **Compare other photos** still opens the manual form for older photos or a pricing region.
+
 ### Set up repair price ranges
 
 Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region such as `san luis obispo, ca`, a stable code such as `patch_small_drywall_hole`, a short repair title, a low and high amount in cents, a three-letter currency code, a pricing unit, the source, and the effective date. Use currencies with two decimal places. The optional pricing region on the comparison form must match the catalog region. If there is no matching entry, the app saves the repair assessment and shows that a price is unavailable. A comparison keeps a snapshot of the price shown at the time it ran.
+
+## Enable the case assistant
+
+The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through three agents:
+
+1. A **coordinator** (Gemini) reads the question and picks one specialist.
+2. A **specialist** (Gemini) drafts the answer: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
+3. A **reviewer** (OpenAI) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+
+California rules come only from the [California Courts guide to security deposits](https://selfhelp.courts.ca.gov/guide-security-deposits-california), stored as numbered sections in `lib/case-assistant.ts`. The assistant is told to say so when the guide doesn't cover a question, and each answer lists the sections it relied on. Update those sections when the guide changes. The assistant gives information, not legal advice.
+
+Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
+
+| Variable | Value |
+|---|---|
+| `GEMINI_API_KEY` | The same Google AI Studio key used for Compare photos |
+| `OPENAI_API_KEY` | A key from the [OpenAI platform](https://platform.openai.com/api-keys). Without it, Gemini reviews its own drafts. |
+| `OPENAI_MODEL` (optional) | A chat model your OpenAI account can use. The default is `gpt-4o-mini`. |
+
+The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Google and OpenAI for each answer; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
 ## Run a live move-out audit
 
