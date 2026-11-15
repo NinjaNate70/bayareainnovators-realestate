@@ -291,7 +291,7 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
         </div>
         <label className={styles.comparisonConsent}>
           <input type="checkbox" checked={auto} onChange={(event) => chooseAuto(event.target.checked)} />
-          <span>Analyse photos automatically. When a room has a move-in and a move-out photo, I agree to send the newest pair to Google Gemini and show the result here.</span>
+          <span>Analyse photos automatically. When a room has a move-in and a move-out photo, I agree to have our system analyse the newest pair and show the result here.</span>
         </label>
         {!loaded && <p role="status">Loading photos…</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}

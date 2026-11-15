@@ -27,6 +27,7 @@ import {
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import { unwrap } from "@/lib/cases";
+import { plural } from "@/lib/neutral-copy";
 import { rememberCase } from "@/lib/auth/drafts";
 import type { Evidence, RentalCase } from "@/types/case";
 
@@ -297,6 +298,10 @@ export function CaseWizard() {
     setBusy(true);
     setError("");
     // Without the audit service, charges are recorded and left open.
+    const recordedLead =
+      data.charges.length === 1
+        ? "Your charge is recorded."
+        : "Your charges are recorded.";
     const recorded = (reason: string): RentalCase => ({
       ...data,
       audited: true,
@@ -322,7 +327,7 @@ export function CaseWizard() {
       if (data.demo || !hosted)
         // Demo findings are never applied to a renter's own uploads.
         value = recorded(
-          "Your charge is recorded. Automated evidence review needs a signed-in account on the hosted service. Add supporting records and review the charge before drawing a conclusion.",
+          `${recordedLead} Automated evidence review needs a signed-in account on the hosted service. Add supporting records and review ${data.charges.length === 1 ? "the charge" : "the charges"} before drawing a conclusion.`,
         );
       else
         try {
@@ -331,7 +336,7 @@ export function CaseWizard() {
           if (!(cause instanceof Error && "code" in cause && cause.code === "setup"))
             throw cause;
           value = recorded(
-            "Your charge is recorded. The automated audit isn’t set up on this site yet. Add supporting records and review the charge before drawing a conclusion.",
+            `${recordedLead} The automated audit isn’t set up on this site yet. Add supporting records and review ${data.charges.length === 1 ? "the charge" : "the charges"} before drawing a conclusion.`,
           );
         }
       await saveCase(value);
@@ -514,7 +519,7 @@ export function CaseWizard() {
                     </label>
                     <p className="small muted">
                       {hosted
-                        ? "When you continue, your letter and lease are sent to Anthropic’s Claude or Google Gemini to read the charges, dates and amounts. You’ll check and correct them on the next step. Tick “No letter / enter manually” to type them yourself instead."
+                        ? "When you continue, our system reads your letter and lease to find the charges, dates and amounts. You’ll check and correct them on the next step. Tick “No letter / enter manually” to type them yourself instead."
                         : "Automatic extraction is not connected. For your own documents, you’ll enter and confirm charges in the next step."}
                     </p>
                   </div>
@@ -784,10 +789,11 @@ export function CaseWizard() {
                     <div className="review-item split-row">
                       <div>
                         <strong>
-                          {data.charges.length} charges ·{" "}
-                          {money(
-                            data.charges.reduce((n, c) => n + c.amount, 0),
-                          )}
+                          {data.charges.length
+                            ? `${plural(data.charges.length, "charge")} · ${money(
+                                data.charges.reduce((n, c) => n + c.amount, 0),
+                              )}`
+                            : "No charges entered yet"}
                         </strong>
                         <p className="small muted">
                           Deposit {money(data.deposit)} · Returned{" "}
@@ -797,7 +803,7 @@ export function CaseWizard() {
                       <FileCheck2 size={24} aria-hidden="true" />
                     </div>
                     <div className="review-item">
-                      <strong>{data.evidence.length} evidence files</strong>
+                      <strong>{plural(data.evidence.length, "evidence file")}</strong>
                       <ul>
                         {data.evidence.map((f) => (
                           <li key={f.id}>{f.name}</li>
@@ -817,7 +823,7 @@ export function CaseWizard() {
                         {data.demo
                           ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
                           : hosted
-                            ? "Running the audit sends your deduction letter, lease, photos and case details to Anthropic’s Claude and Google Gemini. They read your documents and photos, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
+                            ? "Our system reads your documents and evidence to build your audit, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>

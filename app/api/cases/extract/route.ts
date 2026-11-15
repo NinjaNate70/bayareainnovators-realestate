@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { defaultClaudeModel } from '@/lib/claude-json';
+import { neutralService } from '@/lib/neutral-copy';
 import { extractLetter, type LetterFile } from '@/lib/letter-extract';
 
 export const runtime = 'nodejs';
@@ -109,6 +110,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const detail = failure(error);
     console.warn('Letter reading failed:', detail);
-    return respond(`We couldn’t read your letter (${detail}). Enter the charges by hand, or try again.`, 502);
+    return respond(`We couldn’t read your letter (${neutralService(detail)}). Enter the charges by hand, or try again.`, 502);
   }
 }

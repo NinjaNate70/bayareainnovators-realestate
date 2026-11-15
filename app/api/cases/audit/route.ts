@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { depositGuide } from '@/lib/deposit-guide';
 import { runCaseAudit, type AuditFile, type AuditInput, type InspectionNote } from '@/lib/case-audit';
 import { defaultClaudeModel } from '@/lib/claude-json';
+import { neutralService } from '@/lib/neutral-copy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!url || !publishableKey || !geminiKey) {
-    return respond('The automated audit isn’t set up yet. Ask your project admin to add the Gemini key.', 503, 'setup');
+    return respond('The automated audit isn’t set up yet. Ask your project admin to finish the setup.', 503, 'setup');
   }
 
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
@@ -170,6 +171,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const detail = failure(error);
     console.warn('Case audit failed:', detail);
-    return respond(`The audit couldn’t finish (${detail}). Your case is saved. Try again in a moment.`, 502);
+    return respond(`The audit couldn’t finish (${neutralService(detail)}). Your case is saved. Try again in a moment.`, 502);
   }
 }

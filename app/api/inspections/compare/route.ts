@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   if (!url || !publishableKey || !secretKey || !apiKey) {
-    return respond('Photo comparison is unavailable. Ask your project admin to finish the Gemini and Supabase setup.', 503);
+    return respond('Photo comparison is unavailable. Ask your project admin to finish the setup.', 503);
   }
 
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];

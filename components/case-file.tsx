@@ -21,6 +21,7 @@ import {
   verdicts,
 } from "@/components/evidence";
 import { money, readCase, saveCase } from "@/lib/cases";
+import { plural } from "@/lib/neutral-copy";
 import type { RentalCase, CaseTab, Verdict } from "@/types/case";
 import { CountdownBadge, OwedCard } from "@/components/owed-card";
 import { LetterTab } from "@/components/letter-tab";
@@ -267,7 +268,7 @@ export function AuditTab({ data }: { data: RentalCase }) {
           <p>Clear explanations. The evidence behind each one.</p>
         </div>
         <span className="small muted">
-          {data.charges.length} itemized charges
+          {plural(data.charges.length, "itemized charge")}
         </span>
       </div>
       <div className="filters" aria-label="Filter charges">
@@ -293,7 +294,7 @@ export function AuditTab({ data }: { data: RentalCase }) {
         ))}
       </div>
       <p className="sr-only" role="status">
-        Showing {visible.length} charges
+        Showing {plural(visible.length, "charge")}
       </p>
       <div className="charge-list">
         {visible.map((charge, i) => (

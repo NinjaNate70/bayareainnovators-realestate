@@ -50,7 +50,7 @@ export function parseComparisonRequest(value: unknown) {
   if (region !== undefined && (typeof region !== 'string' || region.trim().length > 120)) {
     throw new Error('Enter a pricing region of up to 120 characters.');
   }
-  if (consent !== true) throw new Error('Confirm that the two photos can be sent to Gemini.');
+  if (consent !== true) throw new Error('Confirm that the two photos can be sent for analysis.');
   return {
     moveInPhotoId: moveInPhotoId.toLowerCase(),
     moveOutPhotoId: moveOutPhotoId.toLowerCase(),

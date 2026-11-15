@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { parseAssistantRequest, runAssistant, type CaseRecord } from '@/lib/case-assistant';
 import { defaultClaudeModel } from '@/lib/claude-json';
+import { neutralService } from '@/lib/neutral-copy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!url || !publishableKey || !geminiKey) {
-    return respond('The case assistant is unavailable. Ask your project admin to finish the Gemini and Supabase setup.', 503);
+    return respond('The case assistant is unavailable. Ask your project admin to finish the setup.', 503);
   }
 
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
@@ -88,6 +89,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const detail = failure(error);
     console.warn('Case assistant failed:', detail);
-    return respond(`The assistant couldn’t finish that answer (${detail}). Try again in a moment.`, 502);
+    return respond(`The assistant couldn’t finish that answer (${neutralService(detail)}). Try again in a moment.`, 502);
   }
 }

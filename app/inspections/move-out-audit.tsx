@@ -173,7 +173,7 @@ function Consent({ checked, setChecked }: { checked: boolean; setChecked: (value
   return (
     <label className={styles.comparisonConsent}>
       <input type="checkbox" required checked={checked} onChange={(event) => setChecked(event.target.checked)} />
-      <span>I checked the selected pairs and agree to send these photos to Google Gemini.</span>
+      <span>I checked the selected pairs and agree to have our system analyse these photos.</span>
     </label>
   );
 }

@@ -117,7 +117,7 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
   const names = new Map(photos.map(({ id, original_name }) => [id, original_name]));
   return (
     <div className={styles.comparison}>
-      {autoBusy && <p role="status">Gemini is analysing the newest move-in and move-out photos for this room…</p>}
+      {autoBusy && <p role="status">Our system is analysing the newest move-in and move-out photos for this room…</p>}
       {autoError && !autoBusy && (
         <p role="alert" className={styles.error}>
           Automatic analysis didn’t finish: {autoError}{' '}
@@ -201,14 +201,14 @@ function ComparisonForm({ supabase, moveIn, moveOut, renderPhoto, results, histo
               </div>
               <label className={styles.comparisonConsent}>
                 <input key={`${moveInId}/${moveOutId}`} name="consent" type="checkbox" required />
-                <span>These photos show the same spot. I agree to send both photos to Google Gemini for analysis.</span>
+                <span>These photos show the same spot. I agree to have our system analyse both photos.</span>
               </label>
               <button className={styles.primary} disabled={busy || historyLoading}>{busy ? 'Comparing…' : 'Run comparison'}</button>
             </>
           )}
         </fieldset>
       </form>
-      {busy && <p role="status">Gemini is reviewing the photos and saving the result.</p>}
+      {busy && <p role="status">Our system is reviewing the photos and saving the result.</p>}
       {historyError && <p role="status">Could not load saved comparisons. If this persists, check the Supabase migration.</p>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {selectedResult && <div role="status"><ComparisonResult result={selectedResult} photoNames={names} /></div>}

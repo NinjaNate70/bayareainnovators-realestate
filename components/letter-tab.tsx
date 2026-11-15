@@ -16,6 +16,7 @@ import { SourceChip } from "@/components/evidence";
 import { CountdownBadge } from "@/components/owed-card";
 import { estimateRecovery } from "@/lib/estimate";
 import { money } from "@/lib/cases";
+import { plural } from "@/lib/neutral-copy";
 import { hosted } from "@/lib/backend";
 
 export function LetterTab({
@@ -106,7 +107,7 @@ export function LetterTab({
               <h3>Turn your evidence into a next step.</h3>
               <p>
                 {estimate
-                  ? `${included.length} charges will be included, with the supporting example references.`
+                  ? `${plural(included.length, "charge")} will be included, with the supporting example references.`
                   : "Start with a request for supporting records. No unsupported monetary claim will be included."}
               </p>
               <p className="small muted">

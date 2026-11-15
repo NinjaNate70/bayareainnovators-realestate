@@ -119,8 +119,8 @@ export function CaseAssistant({
     >
       <div className="assistant">
         <p className="small muted">
-          Your question and this case’s details are sent to Google Gemini and
-          Anthropic’s Claude to prepare an answer. Rules come from the California Courts
+          Our system reads your question and this case’s details to prepare
+          an answer. Rules come from the California Courts
           Self-Help Guide.
         </p>
         <div className="assistant-log" role="log" aria-live="polite">
@@ -148,8 +148,7 @@ export function CaseAssistant({
               {message.role === "assistant" && message.agent_label && (
                 <p className="assistant-meta">
                   {message.agent_label} ·{" "}
-                  {message.revised ? "corrected by" : "checked by"}{" "}
-                  {message.reviewed_by === "claude" ? "Claude" : "Gemini"}{" "}
+                  {message.revised ? "corrected by" : "checked by"} our
                   reviewer
                   {message.sources?.length
                     ? ` · Guide: ${message.sources.map((source) => source.title).join("; ")}`
