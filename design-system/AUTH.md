@@ -1,7 +1,8 @@
 # Tenant Shield Auth UI Specification
 
-Phase 1 review draft. No auth UI, backend, environment file, dependency, or SQL is
-implemented in this phase. Read MASTER.md and SCREENS.md with this extension.
+Approved auth specification, now implemented with the local demo backend.
+See AUTH-IMPLEMENTATION.md for runtime verification and demo instructions.
+Read MASTER.md and SCREENS.md with this extension.
 AUTH.md supersedes the older "No auth" and public-case/demo entry assumptions.
 DATA.md defines storage, ownership, sessions, and the Supabase adapter boundary.
 

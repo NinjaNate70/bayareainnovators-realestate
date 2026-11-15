@@ -1,7 +1,8 @@
 # Tenant Shield Local Data and Supabase Migration Plan
 
-Phase 1 architecture proposal. No backend code, Dexie installation, environment
-file, auth seed, SQL migration, or connection is created by this document.
+Approved architecture, now implemented with Dexie and the three local clients.
+Prepared SQL remains unapplied; Supabase is not connected. See
+AUTH-IMPLEMENTATION.md for actual adapter details, verification and setup.
 AUTH.md is the screen/flow contract. MASTER.md supplies all UI tokens.
 
 ## Current state and intended boundary
