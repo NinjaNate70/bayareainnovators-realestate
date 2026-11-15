@@ -1,6 +1,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 export default function Home() {
@@ -31,6 +32,9 @@ export default function Home() {
       <p className="mt-4">
         Rent difference: ${difference}
       </p>
+      <Link href="/inspections" className="btn btn-primary mt-6">
+        My Inspections
+      </Link>
     </main>
   );
 }
