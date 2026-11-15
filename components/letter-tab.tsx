@@ -17,7 +17,7 @@ import { ActionBar } from "@/components/shell";
 import { SourceChip } from "@/components/evidence";
 import { CountdownBadge } from "@/components/owed-card";
 import { estimateRecovery } from "@/lib/estimate";
-import { money } from "@/lib/cases";
+import { draftLocalLetter } from "@/lib/local-correspondence";
 import { plural } from "@/lib/neutral-copy";
 import { hosted } from "@/lib/backend";
 
@@ -39,10 +39,8 @@ export function LetterTab({
     setBusy(true);
     setError("");
     try {
-      // TODO(api): Replace the local template with evidence-cited demand-letter generation, preserving user edits.
       await Promise.resolve();
-      const draft = `${data.renter || "[Your name]"}\n${data.address}\n\nTo: ${data.landlord || "[Landlord or property manager]"}\nSubject: Request to review security deposit deductions\n\nDear ${data.landlord || "Property Manager"},\n\nI am writing about the security deposit for ${data.address}${data.moveOut ? `, which I vacated on ${data.moveOut}` : ""}. My deposit was ${money(data.deposit)}, and ${money(data.returned)} has been returned.\n\n${estimate ? `I would like to review the following deductions, with an estimated disputed range of ${money(estimate.low)}–${money(estimate.high)}:\n\n${included.map((c) => `• ${c.name}: ${money(c.amount)}. ${c.reason} [${c.sources.join(", ")}]`).join("\n\n")}` : data.charges.length === 0 ? `I have not received an itemized list of the deductions${data.deposit > data.returned ? ` from the ${money(data.deposit - data.returned)} withheld` : ""}. Please provide an itemized statement and supporting records for each deduction. I would like to understand the work performed, its cost, and the evidence supporting each charge.` : "Please provide an itemized explanation and supporting records for the deductions listed in my case file. I would like to understand the work performed, its cost, and the evidence supporting each charge."}\n\nPlease review these items and provide supporting receipts or other records. If any amount was incorrectly withheld, please return that amount.${data.replyBy ? ` I request a response by ${data.replyBy}; this is my requested reply date.` : ""}\n\nThank you for reviewing this matter. I hope we can resolve it clearly and fairly.\n\nSincerely,\n${data.renter || "[Your name]"}${data.demo ? "\n\nDEMO DRAFT: Example findings and rule IDs are illustrative and must be verified before use." : ""}`;
-      onUpdate({ letter: draft });
+      onUpdate({ letter: draftLocalLetter(data) });
       setStatus("Draft prepared. Review and edit it before using it.");
     } catch {
       setError(
