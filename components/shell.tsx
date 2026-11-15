@@ -123,6 +123,34 @@ export function Shell({
             <span aria-current="page">{pageTitle}</span>
           </nav>
           <div className="topbar-end">
+            <Sheet
+              title="Pricing"
+              description="Free to start. No extra recovery, no fee."
+              trigger={
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="pricing-trigger"
+                >
+                  Pricing
+                </Button>
+              }
+            >
+              <h3>$0 to start</h3>
+              <p>
+                Create an account, review your deductions, and draft a demand
+                letter for free.
+              </p>
+              <h3>10% success fee · $75 max per case</h3>
+              <p>
+                The fee applies only to the additional money your landlord agrees in
+                writing to return or that you report recovering. Any amount they
+                offered or returned before you started your case is excluded.
+              </p>
+              <Link href="/terms#fees" className="auth-text-link">
+                Read fee details in the draft terms
+              </Link>
+            </Sheet>
             <div className={session ? "mobile-account" : ""}>
               <AccountMenu compact />
             </div>

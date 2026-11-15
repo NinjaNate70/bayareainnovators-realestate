@@ -25,7 +25,7 @@ export default function Terms() {
         Before a public release, the team must supply approved terms and review
         the signup consent wording.
       </p>
-      <h2>Fees</h2>
+      <h2 id="fees">Fees</h2>
       <p>
         <strong>Free to start.</strong> Creating an account, running a deposit
         audit, and generating a demand letter are free.

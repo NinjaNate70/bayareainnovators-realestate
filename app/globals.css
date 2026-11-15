@@ -1018,6 +1018,11 @@ textarea {
   gap: 16px;
   align-items: center;
 }
+.topbar-end .pricing-trigger {
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
 .scope-tag {
   font-size: 12px;
   background: var(--bg);
