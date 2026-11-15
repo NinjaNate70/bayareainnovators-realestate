@@ -195,7 +195,103 @@ export function CaseAssistant({
             <span className="sr-only">Send</span>
           </Button>
         </form>
+        <AiCheck />
       </div>
     </Sheet>
+  );
+}
+
+type ServiceStatus = {
+  service: string;
+  used_for: string;
+  key_set: boolean;
+  model: string;
+  ok: boolean;
+  answered_in_ms: number | null;
+  problem: string;
+  fix: string;
+  available_models: string[];
+};
+
+// Tests the site's AI keys and models and shows what, if anything, is wrong.
+function AiCheck() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [services, setServices] = useState<ServiceStatus[] | null>(null);
+  async function check() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const session = (await getBackend().auth.getSession()).data?.session;
+      if (!session) throw new Error("Sign in again to check the connection.");
+      const response = await fetch("/api/ai-status", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        signal: AbortSignal.timeout(40_000),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        services?: ServiceStatus[];
+        error?: string;
+      };
+      if (!response.ok || !result.services)
+        throw new Error(result.error ?? "The check couldn’t run. Try again.");
+      setServices(result.services);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.name !== "TimeoutError"
+          ? cause.message
+          : "The check took too long. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="assistant-check">
+      <button
+        type="button"
+        className="auth-text-link"
+        disabled={busy}
+        onClick={() => void check()}
+      >
+        {busy ? "Checking the AI services…" : "Not getting answers? Check the AI connection"}
+      </button>
+      {error && (
+        <p className="notice" role="alert">
+          {error}
+        </p>
+      )}
+      {services && (
+        <ul role="status">
+          {services.map((item) => (
+            <li key={item.service}>
+              <strong>
+                {item.service}: {item.ok ? "working" : "not working"}
+              </strong>
+              <span className="assistant-meta">
+                Model {item.model} · {item.used_for}
+              </span>
+              {item.ok ? (
+                <span>
+                  Answered a test in{" "}
+                  {((item.answered_in_ms ?? 0) / 1000).toFixed(1)} seconds.
+                </span>
+              ) : (
+                <>
+                  <span>{item.problem}</span>
+                  <span>{item.fix}</span>
+                  {item.available_models.length > 0 && (
+                    <span className="assistant-meta">
+                      Available to this key: {item.available_models.join(", ")}
+                    </span>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
