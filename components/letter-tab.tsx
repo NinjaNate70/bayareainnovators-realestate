@@ -38,6 +38,7 @@ export function LetterTab({
   const estimate = estimateRecovery(data);
   const included = estimate?.included ?? [];
   async function generate() {
+    if (data.letter.trim() && !window.confirm("Replace the current letter with a new draft?")) return;
     setBusy(true);
     setError("");
     try {
@@ -104,6 +105,12 @@ export function LetterTab({
             <span className="badge">
               {data.demo ? "EXAMPLE TEMPLATE" : "LOCAL DRAFT"}
             </span>
+            {data.letter && (
+              <Button variant="outline" onClick={() => void generate()} disabled={busy || data.stale}>
+                <FilePenLine size={18} aria-hidden="true" />
+                {busy ? "Preparing…" : "Regenerate draft"}
+              </Button>
+            )}
           </div>
           {!data.letter ? (
             <div className="empty-letter">

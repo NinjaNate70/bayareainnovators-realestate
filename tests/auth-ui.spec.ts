@@ -15,6 +15,29 @@ const photo = Buffer.from(
   "base64",
 );
 
+test("the public demo can regenerate letter and reply drafts", async ({ page }) => {
+  await page.goto("/case/demo?tab=letter");
+  await page.getByRole("button", { name: "Generate draft", exact: true }).click();
+  const letter = page.getByRole("textbox", { name: "Edit demand letter" });
+  const originalLetter = await letter.inputValue();
+  const regenerate = page.getByRole("button", { name: "Regenerate draft", exact: true });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await regenerate.click();
+  await expect(letter).toHaveValue(originalLetter);
+  page.once("dialog", (dialog) => dialog.accept());
+  await regenerate.click();
+  await expect(letter).not.toHaveValue(originalLetter);
+  await expect(letter).toHaveValue(/Full bedroom repaint/);
+
+  await page.goto("/case/demo?tab=replies");
+  await page.getByRole("button", { name: "Prepare reply", exact: true }).click();
+  const reply = page.getByRole("textbox", { name: "Edit suggested reply" });
+  const originalReply = await reply.inputValue();
+  page.once("dialog", (dialog) => dialog.accept());
+  await regenerate.click();
+  await expect(reply).not.toHaveValue(originalReply);
+});
+
 test("a signed-out visitor can explore all four tabs of the public demo", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Explore the example", exact: true }).click();

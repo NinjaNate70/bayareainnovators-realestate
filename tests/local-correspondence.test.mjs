@@ -3,6 +3,26 @@ import { test } from 'node:test';
 import { demoCase } from '../lib/fixtures/demo-case.ts';
 import { draftLocalLetter, draftLocalReply } from '../lib/local-correspondence.ts';
 
+test('regenerating a letter changes its wording and keeps case evidence and the reply date', () => {
+  const data = { ...demoCase, replyBy: '2026-11-25' };
+  const letter = draftLocalLetter(data);
+  const alternate = draftLocalLetter({ ...data, letter });
+  assert.notEqual(alternate, letter);
+  assert.match(alternate, /Full bedroom repaint \(\$400\).*small surface marks/);
+  assert.match(alternate, /November 25, 2026/);
+  assert.notEqual(draftLocalLetter({ ...data, letter: alternate }), alternate);
+});
+
+test('regenerating a reply keeps a confirmed reduction and changes the wording', () => {
+  const data = { ...demoCase, incoming: 'I reduced the full bedroom repaint deduction from $400 to $150.' };
+  const reply = draftLocalReply(data);
+  const alternate = draftLocalReply({ ...data, reply });
+  assert.notEqual(alternate, reply);
+  assert.match(alternate, /reducing the Full bedroom repaint deduction to \$150/);
+  assert.doesNotMatch(alternate, /\$400|Professional cleaning/);
+  assert.notEqual(draftLocalReply({ ...data, reply: alternate }), alternate);
+});
+
 test('local letter ties each reviewed dispute to its finding and requests a correction or support', () => {
   const draft = draftLocalLetter({ ...demoCase, replyBy: '2026-11-25' });
   assert.match(draft, /Full bedroom repaint \(\$400\).*small surface marks/);

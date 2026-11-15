@@ -61,6 +61,9 @@ function letterFinding(data: RentalCase, charge: Charge) {
 export function draftLocalLetter(data: RentalCase, accountName?: string) {
   const estimate = estimateRecovery(data);
   const charges = recordedCharges(data);
+  const alternateOpening = 'I’d like to review the security deposit';
+  const alternate = Boolean(data.letter.trim()) && !data.letter.includes(`\n\n${alternateOpening}`);
+  const opening = alternate ? alternateOpening : 'I’m writing about the security deposit';
   const moveOut = dated(data.moveOut);
   const replyBy = dated(data.replyBy);
   const balance = validAmount(data.deposit) && validAmount(data.returned) && data.deposit > data.returned
@@ -72,12 +75,19 @@ export function draftLocalLetter(data: RentalCase, accountName?: string) {
       ? `Please explain the basis for these deductions and provide the itemization or records supporting the work and the amount charged:\n\n${charges.map((charge) => `• ${chargeLine(charge)}`).join('\n')}`
       : 'Please send the itemized statement for any amount still withheld, with the records showing what was charged and why.';
 
-  return `Subject: ${estimate ? 'Request to correct security deposit deductions' : 'Request for security deposit itemization'}\n\n${wrap(data, [
-    `I’m writing about the security deposit${location(data)}${moveOut ? ` after my move-out on ${moveOut}` : ''}.${balance}`,
+  const subject = estimate ? 'Request to correct security deposit deductions' : 'Request for security deposit itemization';
+  const alternateSubject = estimate ? 'Review of security deposit deductions' : 'Request for a breakdown of my security deposit';
+  const request = estimate
+    ? 'Please send a revised itemized statement and return any amount you can’t substantiate. For each deduction you maintain, please identify the records showing why the work was needed and how the cost was calculated.'
+    : 'Please confirm the remaining balance and when any refund will be sent.';
+  const alternateRequest = estimate
+    ? 'For each deduction you believe should stand, please share the records that show what work was needed and how you calculated the cost. Please send an updated itemization and refund any amount the records don’t support.'
+    : 'Could you confirm how much is still being held and when I can expect any refund?';
+
+  return `Subject: ${alternate ? alternateSubject : subject}\n\n${wrap(data, [
+    `${opening}${location(data)}${moveOut ? ` after my move-out on ${moveOut}` : ''}.${balance}`,
     details,
-    estimate
-      ? 'Please send a revised itemized statement and return any amount you can’t substantiate. For each deduction you maintain, please identify the records showing why the work was needed and how the cost was calculated.'
-      : 'Please confirm the remaining balance and when any refund will be sent.',
+    alternate ? alternateRequest : request,
     replyBy ? `Please respond by ${replyBy}.` : '',
   ], accountName)}`;
 }
@@ -122,9 +132,18 @@ export function draftLocalReply(data: RentalCase, accountName?: string) {
   const relevant = (mentioned.length ? mentioned : reviewed.length ? reviewed : charges).slice(0, 2);
   const sentences = data.incoming.split(/(?<=[.!?])\s+|\r?\n/);
   const items = relevant.map((charge) => ({ charge, amount: confirmedReduction(charge, sentences) }));
+  const alternateOpening = 'I appreciate your reply about the security deposit';
+  const alternate = Boolean(data.reply.trim()) && !data.reply.includes(`\n\n${alternateOpening}`);
+  const opening = alternate ? alternateOpening : 'Thanks for getting back to me about the security deposit';
+  const requestItemization = alternate
+    ? 'Could you confirm which deductions, if any, still apply and the amount of each? If the balance changed, please confirm the new amount and when any refund will be sent.'
+    : 'If any deductions remain, please clarify the items and amounts that are still outstanding. If the balance has been adjusted, please confirm the updated amount and when any refund will be sent.';
+  const pendingAdjustment = alternate
+    ? 'If the balance is still under review, I’d appreciate confirmation of the updated amount and when any additional refund will be sent.'
+    : 'If an adjustment is still pending, please confirm the updated balance and when any additional refund will be sent.';
 
   return wrap(data, [
-    `Thanks for getting back to me about the security deposit${location(data)}.`,
+    `${opening}${location(data)}.`,
     ...items.map(({ charge, amount }) => {
       const name = charge.name.trim();
       const records = reviewed.includes(charge) ? supportingRecords(data, charge) : '';
@@ -137,9 +156,9 @@ export function draftLocalReply(data: RentalCase, accountName?: string) {
       return `If you’re still withholding an amount for ${name}, please ${records ? `explain how you accounted for ${records}` : 'explain the basis for the remaining charge'}.`;
     }),
     !items.length
-      ? 'If any deductions remain, please clarify the items and amounts that are still outstanding. If the balance has been adjusted, please confirm the updated amount and when any refund will be sent.'
+      ? requestItemization
       : items.some(({ amount }) => amount !== 0)
-        ? 'If an adjustment is still pending, please confirm the updated balance and when any additional refund will be sent.'
+        ? pendingAdjustment
         : '',
   ], accountName);
 }

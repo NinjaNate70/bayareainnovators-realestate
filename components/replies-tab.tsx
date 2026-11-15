@@ -105,14 +105,14 @@ export function RepliesTab({
                 onClick={() => {
                   if (
                     window.confirm(
-                      "Replace your edited reply with a new template?",
+                      "Replace the current reply with a new draft?",
                     )
                   )
                     void prepare();
                 }}
                 disabled={busy}
               >
-                Prepare a new draft
+                {busy ? "Preparing…" : "Regenerate draft"}
               </Button>
             ) : (
               <Button
