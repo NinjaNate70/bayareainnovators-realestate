@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   const claudeKey = process.env.ANTHROPIC_API_KEY;
-  if (!url || !publishableKey || !geminiKey) {
+  if (!url || !publishableKey || (!claudeKey && !geminiKey)) {
     return respond('Reading letters automatically isn’t set up yet. Enter the charges by hand.', 503, 'setup');
   }
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
@@ -80,12 +80,15 @@ export async function POST(request: Request) {
   const documents = (Array.isArray(found.data.evidence) ? found.data.evidence : [])
     .filter((file) => typeof file.source_id === 'string' && (file.kind === 'letter' || file.kind === 'lease'))
     .sort((a, b) => Number(b.kind === 'letter') - Number(a.kind === 'letter'));
+  const chosen = documents
+    .flatMap((file) => (file.path && file.bucket === 'documents' && file.path.startsWith(`${userId}/${caseId}/`) ? [{ ...file, path: file.path }] : []))
+    .slice(0, limit.count);
+  // Fetch the files all at once.
+  const downloads = await Promise.all(chosen.map((file) => renter.storage.from('documents').download(file.path)));
   const files: LetterFile[] = [];
   let bytes = 0;
-  for (const file of documents) {
-    if (files.length >= limit.count) break;
-    if (!file.path || file.bucket !== 'documents' || !file.path.startsWith(`${userId}/${caseId}/`)) continue;
-    const download = await renter.storage.from('documents').download(file.path);
+  for (const [index, file] of chosen.entries()) {
+    const download = downloads[index];
     if (download.error || !download.data) continue;
     const mime = mimes.includes(download.data.type) ? download.data.type : String(file.type);
     if (!mimes.includes(mime) || bytes + download.data.size > limit.bytes) continue;

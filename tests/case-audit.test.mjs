@@ -63,7 +63,11 @@ const claude = (value, extra = {}) => new Response(JSON.stringify({
   content: [{ type: 'text', text: JSON.stringify(value) }],
   stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, ...extra,
 }), { headers: { 'content-type': 'application/json' } });
-const reading = { documents: [], charges: [{ charge_id: 'C2', appears_in_letter: true, amount_in_letter: 150.5, landlord_reason: 'Cleaning', receipt_or_invoice: 'not_attached', work_details: '', file_ids: ['L1'] }], itemized_statement: true, lease_terms: [], notes: '' };
+const down = (status) => new Response('{}', { status, headers: { 'content-type': 'application/json' } });
+const onClaude = (url) => String(url).includes('anthropic.com');
+
+const reading = { documents: [], charges: [{ charge_id: 'C2', appears_in_letter: true, amount_in_letter: 150.5, landlord_reason: 'Cleaning', receipt_or_invoice: 'not_attached', work_details: '', supporting_evidence: '', file_ids: ['L1'] }], itemized_statement: true, supporting_documents: [], lease_terms: [], notes: '' };
+const support = { ...reading, charges: [], supporting_documents: [{ file_id: 'D1', what_it_is: 'Move-in checklist', dated: '2025-09-01', relevant_facts: 'Notes "scuffs on bedroom walls" at move-in.' }] };
 const seen = { charges: [{ charge_id: 'C1', finding: 'wear_and_tear', description: 'Light scuffs.', photo_ids: ['P1', 'P2'] }] };
 const verdict = { charges: [
   { charge_id: 'C1', status: 'not-allowed', reason: 'Only light scuffs are visible.', evidence_ids: ['P1', 'P2'], guide_sections: ['G6'], requests: [] },
@@ -71,134 +75,175 @@ const verdict = { charges: [
   { charge_id: 'C3', status: 'info', reason: 'The key is not mentioned.', evidence_ids: [], guide_sections: [], requests: ['The key return receipt'] },
 ] };
 const keys = { guide, geminiKey: 'g-key', geminiModel: 'gemini-test', claudeKey: 'c-key', claudeModel: 'claude-test', retryDelay: 0 };
-// Which job a Claude request is doing, from what it carries.
-const claudeRole = (body) => {
-  const parts = body.messages[0].content;
-  if (parts.some((part) => part.type === 'document' || part.source?.media_type === 'image/png')) return 'documents';
-  return parts.some((part) => part.type === 'image') ? 'photos' : 'auditor';
-};
-const role = (body) => (body.contents?.[0].parts.some((part) => part.inline_data) ? 'photos' : body.contents ? 'auditor' : 'documents');
 
-test('Claude reads the documents, Gemini the photos, and the auditor sees both', async () => {
+// Which job a request is doing, from what it carries. Works for both services.
+function job(url, init) {
+  const body = JSON.parse(init.body);
+  const parts = onClaude(url)
+    ? body.messages[0].content.map((part) => ({ text: part.text, data: part.source?.data, mime: part.source?.media_type }))
+    : body.contents[0].parts.map((part) => ({ text: part.text, data: part.inline_data?.data, mime: part.inline_data?.mime_type }));
+  const files = parts.filter((part) => part.data).map((part) => part.data);
+  const name = !files.length ? 'auditor' : files.includes('QkVGT1JF') ? 'photos' : files.includes('UERG') ? 'core' : 'support';
+  return { name, body, parts, files, text: parts.map((part) => part.text ?? '').join('\n') };
+}
+const answer = { core: reading, support, photos: seen, auditor: verdict };
+
+test('Claude reads the documents in parallel batches, examines the photos and audits', async () => {
   const calls = [];
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    calls.push({ url: String(url), body, headers: new Headers(init.headers) });
-    if (String(url).includes('anthropic.com')) return claude(reading);
-    return gemini(role(body) === 'photos' ? seen : verdict);
+    const call = job(url, init);
+    calls.push({ ...call, url: String(url), headers: new Headers(init.headers) });
+    return claude(answer[call.name]);
   } });
+  // Four requests, all to Claude: letter and lease, the supporting document, the photos, then the auditor.
+  assert.deepEqual(calls.map((call) => call.name).sort(), ['auditor', 'core', 'photos', 'support']);
+  assert.ok(calls.every((call) => onClaude(call.url) && call.headers.get('authorization') === 'Bearer c-key'));
+  assert.equal(calls.at(-1).name, 'auditor');
   assert.equal(result.documents_read_by, 'claude');
   assert.deepEqual([result.documents_read, result.photos_read], [3, 2]);
   assert.deepEqual(result.charges.map((c) => [c.id, c.verdict, c.high]), [['C1', 'not-allowed', 400], ['C2', 'disputable', 150.5], ['C3', 'info', 0]]);
 
-  const docs = calls.find((call) => call.url.includes('anthropic.com'));
-  assert.equal(docs.headers.get('authorization'), 'Bearer c-key');
-  const sent = docs.body.messages[0].content;
+  const core = calls.find((call) => call.name === 'core');
+  const sent = core.body.messages[0].content;
   // The PDF goes as a document block and the scanned lease as an image, each after its label.
   assert.deepEqual(sent.find((part) => part.type === 'document').source, { type: 'base64', media_type: 'application/pdf', data: 'UERG' });
   assert.deepEqual(sent.find((part) => part.type === 'image').source, { type: 'base64', media_type: 'image/png', data: 'TEVBU0U=' });
   assert.equal(sent[sent.findIndex((part) => part.type === 'document') - 1].text, 'File L1 (letter): letter.pdf');
-  // A document the renter added to help the case is read with the letter and lease.
-  const extra = sent.findIndex((part) => part.source?.data === 'Q0hFQ0s=');
-  assert.equal(sent[extra - 1].text, 'File D1 (supporting document): move-in checklist.pdf');
-  assert.match(docs.body.system, /supporting documents the renter added/);
-  assert.ok(docs.body.output_config.format.schema.required.includes('supporting_documents'));
+  // Each batch holds only its own files.
+  assert.deepEqual(core.files, ['UERG', 'TEVBU0U=']);
+  const extra = calls.find((call) => call.name === 'support');
+  assert.deepEqual(extra.files, ['Q0hFQ0s=']);
+  assert.match(extra.text, /File D1 \(supporting document\): move-in checklist\.pdf/);
+  assert.match(extra.text, /supporting documents only/);
+  assert.deepEqual(calls.find((call) => call.name === 'photos').files, ['QkVGT1JF', 'QUZURVI=']);
   // Nullable and nested fields are closed off the way structured outputs require.
-  const item = docs.body.output_config.format.schema.properties.charges.items;
+  const item = core.body.output_config.format.schema.properties.charges.items;
   assert.equal(item.additionalProperties, false);
   assert.deepEqual(item.properties.amount_in_letter, { anyOf: [{ type: 'number' }, { type: 'null' }] });
-  // Documents go only to the document reader; photos only to the photo analyst.
-  assert.ok(!JSON.stringify(docs.body).includes('QkVGT1JF'));
-  const photos = calls.find((call) => !call.url.includes('anthropic.com') && role(call.body) === 'photos');
-  assert.deepEqual(photos.body.contents[0].parts.filter((part) => part.inline_data).map((part) => part.inline_data.data), ['QkVGT1JF', 'QUZURVI=']);
-  const auditor = calls.find((call) => !call.url.includes('anthropic.com') && role(call.body) === 'auditor');
-  const context = auditor.body.contents[0].parts[0].text;
-  for (const expected of ['"receipt_or_invoice":"not_attached"', '"finding":"wear_and_tear"', '"spot":"Sink"', '"move_out_date":"2026-10-31"']) assert.ok(context.includes(expected), expected);
-  assert.ok(guide.every((section) => auditor.body.systemInstruction.parts[0].text.includes(`[${section.id}]`)));
-  // The auditor gets findings, not files, and no key reaches any prompt.
-  assert.ok(!context.includes('UERG') && !JSON.stringify(calls.map((call) => call.body)).includes('-key'));
+
+  // The auditor gets every reader's findings, not the files, and thinks harder than the readers.
+  const auditor = calls.find((call) => call.name === 'auditor');
+  for (const expected of ['"receipt_or_invoice":"not_attached"', 'scuffs on bedroom walls', '"file_ids":["D1"]', '"finding":"wear_and_tear"', '"spot":"Sink"', '"move_out_date":"2026-10-31"']) assert.ok(auditor.text.includes(expected), expected);
+  assert.ok(guide.every((section) => auditor.body.system.includes(`[${section.id}]`)));
+  assert.match(auditor.body.system, /move-in checklist or dated message/);
+  assert.equal(auditor.body.output_config.effort, 'medium');
+  assert.equal(core.body.output_config.effort, 'low');
+  assert.ok(!auditor.text.includes('UERG') && !JSON.stringify(calls.map((call) => call.body)).includes('-key'));
 });
 
-test('Gemini reads the documents when Claude is missing or failing', async () => {
-  for (const extra of [{ claudeKey: undefined }, {}]) {
-    const result = await runCaseAudit({ ...keys, ...extra, input, fetch: async (url, init) => {
-      if (String(url).includes('anthropic.com')) return new Response('no', { status: 400 });
-      const body = JSON.parse(init.body);
-      const parts = body.contents[0].parts;
-      if (parts.some((part) => part.inline_data?.mime_type === 'application/pdf')) return gemini(reading);
-      return gemini(role(body) === 'photos' ? seen : verdict);
+test('supporting documents are read two at a time, at the same time as everything else', async () => {
+  const many = { ...input, files: [...input.files, ...['D2', 'D3', 'D4', 'D5'].map((id) => ({ id, kind: 'other', name: `${id}.pdf`, mime: 'application/pdf', data: `RE9D${id}` }))] };
+  let open = 0, most = 0;
+  const batches = [];
+  const result = await runCaseAudit({ ...keys, input: many, fetch: async (url, init) => {
+    const call = job(url, init);
+    if (call.name !== 'auditor') { open += 1; most = Math.max(most, open); batches.push(call.files.length); await new Promise((resolve) => setTimeout(resolve, 20)); open -= 1; }
+    return claude(answer[call.name]);
+  } });
+  // Letter+lease, three pairs of supporting documents (one short), and the photos: five readers at once.
+  assert.deepEqual(batches.sort(), [1, 2, 2, 2, 2]);
+  assert.equal(most, 5);
+  assert.equal(result.documents_read, 7);
+});
+
+test('it runs on Claude alone, with no Gemini key', async () => {
+  const result = await runCaseAudit({ ...keys, geminiKey: undefined, input, fetch: async (url, init) => {
+    assert.ok(onClaude(url));
+    return claude(answer[job(url, init).name]);
+  } });
+  assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
+  await assert.rejects(runCaseAudit({ ...keys, geminiKey: undefined, input, fetch: async () => down(529) }), /^Error: Claude request failed \(529\)\.$/);
+  await assert.rejects(runCaseAudit({ ...keys, geminiKey: undefined, claudeKey: undefined, input, fetch: async () => down(500) }), /No AI service is configured/);
+});
+
+test('Gemini stands in for any step Claude fails', async () => {
+  for (const failing of ['core', 'photos', 'auditor', 'all']) {
+    const standIns = [];
+    const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+      const call = job(url, init);
+      if (onClaude(url)) return failing === 'all' || failing === call.name ? down(529) : claude(answer[call.name]);
+      standIns.push(call.name);
+      return gemini(answer[call.name]);
     } });
-    assert.equal(result.documents_read_by, 'gemini');
+    assert.deepEqual(standIns.sort(), failing === 'all' ? ['auditor', 'core', 'photos', 'support'] : [failing], failing);
+    assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info'], failing);
+    assert.equal(result.documents_read_by, failing === 'all' ? 'gemini' : 'claude');
+  }
+  // A refusal or a cut-off answer from Claude counts as a failure too.
+  for (const extra of [{ stop_reason: 'refusal', content: [] }, { stop_reason: 'max_tokens' }]) {
+    const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+      const call = job(url, init);
+      return onClaude(url) ? claude(answer[call.name], call.name === 'auditor' ? extra : {}) : gemini(answer[call.name]);
+    } });
     assert.equal(result.charges[1].verdict, 'disputable');
   }
 });
 
 test('evidence a reader could not open cannot support a finding', async () => {
-  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (String(url).includes('anthropic.com')) return claudeRole(body) === 'documents' ? claude(reading) : new Response('down', { status: 500 });
-    if (role(body) === 'photos') return new Response('down', { status: 503 });
-    assert.match(body.contents[0].parts[0].text, /photos could not be examined/);
-    return gemini(verdict);
+  // Photos fail on both services; documents are read.
+  const noPhotos = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const call = job(url, init);
+    if (call.name === 'photos') return down(503);
+    if (call.name === 'auditor') assert.match(call.text, /photos could not be examined/);
+    return claude(answer[call.name]);
   } });
-  assert.equal(result.photos_read, 0);
+  assert.equal(noPhotos.photos_read, 0);
   // C1 leaned on photos nobody examined, so it is left open. C2 stands on the letter.
-  assert.deepEqual(result.charges.map((c) => c.verdict), ['info', 'disputable', 'info']);
+  assert.deepEqual(noPhotos.charges.map((c) => c.verdict), ['info', 'disputable', 'info']);
+
+  // The supporting batch fails; a finding that cites it is left open, while the letter still counts.
+  const cites = { charges: [
+    { charge_id: 'C1', status: 'disputable', reason: 'The checklist notes scuffs.', evidence_ids: ['D1'], guide_sections: ['G6'], requests: [] },
+    { charge_id: 'C2', status: 'disputable', reason: 'No receipt is attached.', evidence_ids: ['L1'], guide_sections: ['G4'], requests: [] },
+  ] };
+  const noSupport = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const call = job(url, init);
+    if (call.name === 'support') return down(500);
+    if (call.name === 'auditor') { assert.match(call.text, /Documents that could not be read, by file id\. Treat them as unavailable: \["D1"\]/); return claude(cites); }
+    return claude(answer[call.name]);
+  } });
+  assert.equal(noSupport.documents_read, 2);
+  assert.deepEqual(noSupport.charges.map((c) => c.verdict), ['info', 'disputable', 'info']);
+
+  // When that batch is read, the same finding stands.
+  const withSupport = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
+    const call = job(url, init);
+    return claude(call.name === 'auditor' ? cites : answer[call.name]);
+  } });
+  assert.deepEqual([withSupport.charges[0].verdict, withSupport.charges[0].sources], ['disputable', ['G6', 'D1']]);
 });
 
 test('a case with no files is audited without the readers and stays open', async () => {
   let n = 0;
   const result = await runCaseAudit({ ...keys, input: { ...input, files: [], photoPairs: {} }, fetch: async (url, init) => {
     n += 1;
-    assert.match(JSON.parse(init.body).contents[0].parts[0].text, /No deduction letter, lease or supporting document was uploaded/);
-    return gemini(verdict);
+    assert.match(job(url, init).text, /No deduction letter, lease or supporting document was uploaded/);
+    return claude(verdict);
   } });
   assert.equal(n, 1);
   assert.equal(result.documents_read_by, 'none');
   assert.deepEqual(result.charges.map((c) => c.verdict), ['info', 'info', 'info']);
 });
 
-test('the audit fails as a whole, naming Gemini, if no auditor answers', async () => {
+test('the audit fails as a whole, naming each service, if no auditor answers', async () => {
   await assert.rejects(runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (String(url).includes('anthropic.com')) return claudeRole(body) === 'documents' ? claude(reading) : new Response('down', { status: 500 });
-    return role(body) === 'photos' ? gemini(seen) : new Response('down', { status: 500 });
-  } }), /Gemini request failed \(500\)/);
+    const call = job(url, init);
+    if (call.name !== 'auditor') return claude(answer[call.name]);
+    return down(onClaude(url) ? 529 : 503);
+  } }), { name: 'AiServiceError', message: 'Claude request failed (529); Gemini request failed (503).' });
 });
 
-test('a busy Gemini model is retried once', async () => {
-  const attempts = { photos: 0, auditor: 0 };
-  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (String(url).includes('anthropic.com')) {
-      assert.equal(claudeRole(body), 'documents');
-      return claude(reading);
-    }
-    const job = role(body);
-    attempts[job] += 1;
-    if (attempts[job] === 1) return new Response('overloaded', { status: 503 });
-    return gemini(job === 'photos' ? seen : verdict);
-  } });
-  assert.deepEqual(attempts, { photos: 2, auditor: 2 });
-  assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
-});
-
-test('Claude examines the photos and audits when Gemini stays overloaded', async () => {
-  const claudeJobs = [];
-  let geminiCalls = 0;
-  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (!String(url).includes('anthropic.com')) { geminiCalls += 1; return new Response('overloaded', { status: 503 }); }
-    const job = claudeRole(body);
-    claudeJobs.push(job);
-    assert.equal(body.output_config.format.type, 'json_schema');
-    return claude(job === 'documents' ? reading : job === 'photos' ? seen : verdict);
-  } });
-  assert.deepEqual(claudeJobs.sort(), ['auditor', 'documents', 'photos']);
-  // Photos and auditor each tried Gemini twice before handing over.
-  assert.equal(geminiCalls, 4);
-  assert.deepEqual([result.documents_read, result.photos_read], [3, 2]);
-  assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
+test('with little time left the auditor thinks less, and with none the audit stops', async () => {
+  const efforts = [];
+  const fetch = async (url, init) => {
+    const call = job(url, init);
+    if (call.name === 'auditor') efforts.push(call.body.output_config.effort);
+    return claude(answer[call.name]);
+  };
+  // 40 seconds already spent fetching files: under 26 seconds remain for the auditor.
+  await runCaseAudit({ ...keys, geminiKey: undefined, input, startedAt: Date.now() - 40_000, fetch });
+  assert.deepEqual(efforts, ['low']);
+  await assert.rejects(runCaseAudit({ ...keys, geminiKey: undefined, input, startedAt: Date.now() - 58_000, fetch }), { name: 'TimeoutError' });
 });
 
 test('an estimate needs audited findings', () => {
@@ -209,28 +254,4 @@ test('an estimate needs audited findings', () => {
   const estimate = estimateRecovery({ ...base, charges: audited });
   assert.deepEqual([estimate.low, estimate.high, estimate.included.length], [400, 550.5, 2]);
   assert.equal(estimateRecovery({ ...base, stale: true, charges: audited }), null);
-});
-
-test('a supporting document can back a finding, and its facts reach the auditor', async () => {
-  const withSupport = { ...reading, supporting_documents: [{ file_id: 'D1', what_it_is: 'Move-in checklist', dated: '2025-09-01', relevant_facts: 'Notes "scuffs on bedroom walls" at move-in.' }] };
-  const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (String(url).includes('anthropic.com')) return claude(withSupport);
-    if (role(body) === 'photos') return gemini(seen);
-    assert.match(body.contents[0].parts[0].text, /scuffs on bedroom walls/);
-    assert.match(body.systemInstruction.parts[0].text, /move-in checklist or dated message/);
-    return gemini({ charges: [{ charge_id: 'C1', status: 'disputable', reason: 'Your move-in checklist already notes scuffs on the bedroom walls.', evidence_ids: ['D1'], guide_sections: ['G6'], requests: [] }] });
-  } });
-  assert.deepEqual([result.charges[0].verdict, result.charges[0].sources], ['disputable', ['G6', 'D1']]);
-});
-
-test('with the document reader down, a supporting document cannot back a finding', async () => {
-  const result = await runCaseAudit({ ...keys, claudeKey: undefined, input, fetch: async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (body.contents[0].parts.some((part) => part.inline_data?.mime_type === 'application/pdf')) return new Response('down', { status: 500 });
-    if (role(body) === 'photos') return gemini(seen);
-    return gemini({ charges: [{ charge_id: 'C1', status: 'disputable', reason: 'The checklist notes scuffs.', evidence_ids: ['D1'], guide_sections: ['G6'], requests: [] }] });
-  } });
-  assert.equal(result.documents_read, 0);
-  assert.equal(result.charges[0].verdict, 'info');
 });

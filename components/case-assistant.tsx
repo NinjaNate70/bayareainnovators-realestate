@@ -119,8 +119,8 @@ export function CaseAssistant({
     >
       <div className="assistant">
         <p className="small muted">
-          Your question and this case’s details are sent to Google Gemini and
-          Anthropic’s Claude to prepare an answer. Rules come from the California Courts
+          Your question and this case’s details are sent to Anthropic’s Claude
+          to prepare an answer, or to Google Gemini if Claude is unavailable. Rules come from the California Courts
           Self-Help Guide.
         </p>
         <div className="assistant-log" role="log" aria-live="polite">
@@ -211,6 +211,7 @@ type ServiceStatus = {
   problem: string;
   fix: string;
   available_models: string[];
+  optional?: boolean;
 };
 
 // Tests the site's AI keys and models and shows what, if anything, is wrong.
@@ -267,7 +268,12 @@ function AiCheck() {
           {services.map((item) => (
             <li key={item.service}>
               <strong>
-                {item.service}: {item.ok ? "working" : "not working"}
+                {item.service}:{" "}
+                {item.ok
+                  ? "working"
+                  : item.optional && !item.key_set
+                    ? "not set (optional)"
+                    : "not working"}
               </strong>
               <span className="assistant-meta">
                 Model {item.model} · {item.used_for}
