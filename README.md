@@ -150,6 +150,12 @@ The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`.
 
 The assistant needs only `ANTHROPIC_API_KEY`. If `GEMINI_API_KEY` is also set, Gemini stands in for a step that Claude fails, so one provider having a bad moment doesn't stop the audit or the assistant.
 
+### Fast mode
+
+Every Claude request the app makes (reading documents and photos, the audit, the letter reader and the assistant) asks for fast mode when the model offers it without a beta: `claude-opus-5-5`, `claude-fable-5-2` and `claude-mythos-5-2`. Fast mode speeds up how quickly the answer is written. It does not shorten uploads or the time Claude spends taking in a long document. It bills at a premium, so expect the Claude part of the bill to roughly double.
+
+If a fast request is turned away (fast mode has its own rate limit and capacity), the same request is sent once more at standard speed, as long as time remains. **Check the AI connection** reports whether fast mode is actually in use for your key. Set `ANTHROPIC_FAST_MODE=off` to go back to standard speed and price.
+
 ### If answers don't come through
 
 Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and Claude: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
@@ -165,6 +171,7 @@ Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
 | `GEMINI_API_KEY` (optional) | The Google AI Studio key used for Compare photos. Here it is only a stand-in for Claude. |
 | `ANTHROPIC_API_KEY` | A key from the [Claude Console](https://platform.claude.com/settings/keys), billed to your Claude API credit. Required for the assistant, the letter reader and the audit unless Gemini is set. |
 | `ANTHROPIC_MODEL` (optional) | A Claude model ID. The default is `claude-opus-5-5`; a smaller model such as `claude-haiku-5-5` costs less. |
+| `ANTHROPIC_FAST_MODE` (optional) | Leave unset to use Claude's fast mode, which answers at up to about 2.5 times the output speed for twice the standard price on `claude-opus-5-5`. Set it to `off` for standard speed and price. |
 
 The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Anthropic for each answer, and to Google only if Gemini stands in; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
