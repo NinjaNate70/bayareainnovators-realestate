@@ -98,7 +98,6 @@ export function AuthFrame({
           {children}
           <TrustLine />
         </main>
-        <AuthFooter />
       </section>
     </div>
   );
@@ -119,21 +118,6 @@ export function TrustLine() {
         </small>
       </div>
     </div>
-  );
-}
-export function AuthFooter() {
-  return (
-    <footer className="auth-footer">
-      <Link href="/terms" target="_blank" rel="noreferrer">
-        Terms
-      </Link>
-      <span aria-hidden="true">·</span>
-      <Link href="/privacy" target="_blank" rel="noreferrer">
-        Privacy
-      </Link>
-      <span aria-hidden="true">·</span>
-      <span>Not legal advice.</span>
-    </footer>
   );
 }
 function GoogleLogo() {

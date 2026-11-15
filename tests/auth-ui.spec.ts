@@ -68,7 +68,7 @@ test("the public demo works from Help and the phone navigation", async ({ page }
   await expect(page.getByRole("heading", { name: "Possible ordinary wear" })).toBeVisible();
 });
 
-async function signup(page: Page, email: string, name = "Test Renter") {
+async function signupAndVerify(page: Page, email: string, name = "Test Renter") {
   await page.goto("/signup");
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByLabel("Email", { exact: true }).fill(email);
@@ -84,6 +84,9 @@ async function signup(page: Page, email: string, name = "Test Renter") {
   await expect(
     page.getByRole("heading", { name: "Email verified." }),
   ).toBeVisible();
+}
+async function signup(page: Page, email: string, name?: string) {
+  await signupAndVerify(page, email, name);
   await page.getByRole("button", { name: "Continue to your case" }).click();
   await expect(page).toHaveURL(/\/case\/new/);
   await expect(
@@ -124,6 +127,43 @@ async function expire(page: Page) {
     });
   });
 }
+test("legal links are available on public and signed-in screens", async ({
+  page,
+}) => {
+  const legal = page.getByRole("navigation", { name: "Legal" });
+  const termsLink = legal.getByRole("link", { name: "Terms of Service" });
+  const privacyLink = legal.getByRole("link", { name: "Privacy Policy" });
+
+  for (const route of ["/", "/login", "/inspections"]) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await expect(termsLink).toHaveAttribute("href", "/terms");
+    await expect(privacyLink).toHaveAttribute("href", "/privacy");
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signupAndVerify(page, `legal-links-${Date.now()}@example.test`);
+  await page.goto("/case/new");
+  await expect(
+    page.getByRole("heading", { name: "Let’s put your case together." }),
+  ).toBeVisible();
+  for (const [link, pathname, heading] of [
+    [termsLink, "/terms", "Terms"],
+    [privacyLink, "/privacy", "Privacy"],
+  ] as const) {
+    const [policy] = await Promise.all([
+      page.waitForEvent("popup"),
+      link.click(),
+    ]);
+    await expect(policy).toHaveURL((url) => url.pathname === pathname);
+    await expect(
+      policy.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
+    await expect(policy.getByRole("navigation", { name: "Legal" })).toBeVisible();
+    await policy.close();
+  }
+  await expect(page).toHaveURL(/\/case\/new/);
+});
+
 test("Start your case opens intake across sign-in and screen sizes", async ({
   page,
 }) => {
@@ -501,7 +541,7 @@ test("Create account stays disabled until the terms are accepted", async ({
     ["Terms of Service", "/terms"],
     ["Privacy Policy", "/privacy"],
   ]) {
-    const link = page.getByRole("link", { name, exact: true });
+    const link = page.getByRole("main").getByRole("link", { name, exact: true });
     await expect(link).toHaveAttribute("href", href);
     await expect(link).toHaveAttribute("target", "_blank");
   }

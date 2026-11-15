@@ -164,10 +164,6 @@ export function Shell({
             page={caseId ? tab : draftCaseId ? "wizard" : "other"}
           />
         )}
-        <footer className="app-footer">
-          <span>Tenant Shield · Bay Innovations</span>
-          <span>Information, not legal advice.</span>
-        </footer>
       </div>
       <nav
         className="bottom-nav"

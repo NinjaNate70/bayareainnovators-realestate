@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/provider";
 
@@ -15,6 +16,18 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AuthProvider>{children}</AuthProvider>
+        <footer className="site-footer">
+          <span>Tenant Shield · Bay Innovations</span>
+          <nav aria-label="Legal">
+            <Link href="/terms" target="_blank" rel="noreferrer">
+              Terms of Service
+            </Link>
+            <Link href="/privacy" target="_blank" rel="noreferrer">
+              Privacy Policy
+            </Link>
+          </nav>
+          <span>Information, not legal advice.</span>
+        </footer>
       </body>
     </html>
   );

@@ -19,7 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { useAuth } from "./provider";
-import { AuthFooter, TrustLine } from "./frame";
+import { TrustLine } from "./frame";
 import {
   Field,
   FormError,
@@ -149,7 +149,6 @@ export function AccountSettings() {
           <DeleteAccount />
         </aside>
       </div>
-      <AuthFooter />
     </Shell>
   );
 }
