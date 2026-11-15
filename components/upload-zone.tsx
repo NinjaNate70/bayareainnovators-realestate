@@ -21,10 +21,10 @@ export function UploadZone({
   const id = useId();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const latch=useRef(false);
+  const latch = useRef(false);
   async function add(list: FileList | null) {
     if (!list || latch.current) return;
-    latch.current=true;
+    latch.current = true;
     setError("");
     setBusy(true);
     try {
@@ -42,7 +42,7 @@ export function UploadZone({
             `${file.name} is larger than 10MB. Choose a smaller file.`,
           );
         const fid = `${kind === "before" || kind === "after" ? "P" : "D"}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-        const metadata=await storeFile(caseId,fid,file);
+        const metadata = await storeFile(caseId, fid, file, kind);
         onAdd({
           ...metadata,
           id: fid,
@@ -57,7 +57,7 @@ export function UploadZone({
         e instanceof Error ? e.message : "File could not be saved. Try again.",
       );
     } finally {
-      latch.current=false;
+      latch.current = false;
       setBusy(false);
     }
   }

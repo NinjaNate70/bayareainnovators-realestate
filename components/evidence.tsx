@@ -132,7 +132,7 @@ export function EvidencePreview({
     if (!file || file.url) return;
     let alive = true;
     let objectUrl = "";
-    getFile(data.id,file)
+    getFile(data.id, file)
       .then((signedUrl) => {
         objectUrl = signedUrl;
         if (alive) setUrl(objectUrl);

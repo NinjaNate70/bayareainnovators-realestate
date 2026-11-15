@@ -44,12 +44,18 @@ export function CaseWizard() {
       try {
         const params = new URLSearchParams(location.search);
         const edit = params.get("edit");
-        const recent = unwrap(await getBackend().data.listCases()).find(c=>!c.audited);
-        const existing = edit ? await readCase(edit) : recent ? await readCase(recent.id) : null;
-        if(edit && !existing)throw new Error("This case is unavailable.");
+        const recent = unwrap(await getBackend().data.listCases()).find(
+          (c) => !c.audited,
+        );
+        const existing = edit
+          ? await readCase(edit)
+          : recent
+            ? await readCase(recent.id)
+            : null;
+        if (edit && !existing) throw new Error("This case is unavailable.");
         const value = existing ?? freshCase();
-        if(!existing)await saveCase(value);
-        if(!active)return;
+        if (!existing) await saveCase(value);
+        if (!active) return;
         setData(value);
         const requested = steps.findIndex(
           (s) => s.toLowerCase() === params.get("step"),
@@ -73,11 +79,12 @@ export function CaseWizard() {
       if (!active) return;
       try {
         await saveCase(data);
-        if(active)setSaveStatus("Draft saved in this browser");
+        if (active) setSaveStatus("Draft saved in this browser");
       } catch {
-        if(active)setSaveStatus(
-          "Draft not saved. Keep this page open and retry when browser storage is available.",
-        );
+        if (active)
+          setSaveStatus(
+            "Draft not saved. Keep this page open and retry when browser storage is available.",
+          );
       }
     });
     return () => {
@@ -91,7 +98,16 @@ export function CaseWizard() {
     return (
       <Shell>
         <div className="loading-state" role="status">
-          {error ? <><p role="alert">{error}</p><Button onClick={()=>location.reload()}>Try again</Button></> : <><LoaderCircle className="spin" /> Loading your draft…</>}
+          {error ? (
+            <>
+              <p role="alert">{error}</p>
+              <Button onClick={() => location.reload()}>Try again</Button>
+            </>
+          ) : (
+            <>
+              <LoaderCircle className="spin" /> Loading your draft…
+            </>
+          )}
         </div>
       </Shell>
     );
@@ -110,7 +126,7 @@ export function CaseWizard() {
       ].includes(key),
     );
     setData((d) => {
-      const next=d
+      const next = d
         ? {
             ...d,
             ...value,
@@ -118,7 +134,7 @@ export function CaseWizard() {
             stale: changesFacts && d.audited ? true : d.stale,
           }
         : d;
-      if(next)rememberCase(next);
+      if (next) rememberCase(next);
       return next;
     });
   }
@@ -351,7 +367,12 @@ export function CaseWizard() {
                         variant="outline"
                         onClick={async () => {
                           const owned = await getBackend().data.getCase("demo");
-                          if(!owned.data){setError("The example belongs to the demo account. Sign in with demo@tenantshield.app to explore it.");return;}
+                          if (!owned.data) {
+                            setError(
+                              "The example belongs to the demo account. Sign in with demo@tenantshield.app to explore it.",
+                            );
+                            return;
+                          }
                           const value = fromRow(owned.data);
                           value.audited = false;
                           setData(value);

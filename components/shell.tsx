@@ -17,6 +17,7 @@ import type { CaseTab } from "@/types/case";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/auth/account-menu";
+import { useAuth } from "@/components/auth/provider";
 
 export function Shell({
   children,
@@ -28,6 +29,7 @@ export function Shell({
   tab?: CaseTab;
 }) {
   const path = usePathname();
+  const { session } = useAuth();
   const global = [
     { label: "Home", href: "/", icon: Home },
     { label: "New case", href: "/case/new", icon: Plus },
@@ -105,13 +107,17 @@ export function Shell({
             <span>
               {caseId
                 ? "Case file"
-                : path === "/account" ? "Account settings" : path === "/case/new"
-                  ? "New case"
-                  : "Overview"}
+                : path === "/account"
+                  ? "Account settings"
+                  : path === "/case/new"
+                    ? "New case"
+                    : "Overview"}
             </span>
           </div>
           <div className="topbar-end">
-            <div className="mobile-account"><AccountMenu compact /></div>
+            <div className={session ? "mobile-account" : ""}>
+              <AccountMenu compact />
+            </div>
             <span className="scope-tag">California renters</span>
             <Sheet
               title="A clearer path forward"

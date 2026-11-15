@@ -27,7 +27,7 @@ import { fromRow } from "@/lib/db/mapping";
 import type { RentalCase } from "@/types/case";
 
 export function Landing() {
-  const {session}=useAuth();
+  const { session } = useAuth();
   const [recent, setRecent] = useState<RentalCase | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -35,10 +35,13 @@ export function Landing() {
     void Promise.resolve().then(async () => {
       if (!active) return;
       try {
-        if(!session){setRecent(null);return;}
-        const result=await getBackend().data.getMostRecentCase();
-        if(result.error)throw new Error(result.error.message);
-        if(active)setRecent(result.data?fromRow(result.data):null);
+        if (!session) {
+          setRecent(null);
+          return;
+        }
+        const result = await getBackend().data.getMostRecentCase();
+        if (result.error) throw new Error(result.error.message);
+        if (active) setRecent(result.data ? fromRow(result.data) : null);
       } catch {
         setError(
           "We couldn’t load your saved case. You can still start a case or explore the demo.",
