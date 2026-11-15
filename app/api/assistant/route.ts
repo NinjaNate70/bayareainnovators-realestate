@@ -29,6 +29,8 @@ const caseColumns = 'address, renter_name, landlord_name, move_out_date, letter_
 function failure(error: unknown) {
   if (error instanceof Error && error.name === 'TimeoutError') return 'the AI service took too long';
   const message = error instanceof Error ? error.message : '';
+  // Raised when a service and its stand-in both failed; it names each one.
+  if (error instanceof Error && error.name === 'AiServiceError') return message.slice(0, -1);
   return /^(Gemini|OpenAI) (request failed \(\d{3}\)|did not return a complete \w+)\.$/.test(message)
     ? message.slice(0, -1)
     : 'unexpected error';
