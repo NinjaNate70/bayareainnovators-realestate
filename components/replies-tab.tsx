@@ -22,8 +22,10 @@ import { hosted } from "@/lib/backend";
 export function RepliesTab({
   data,
   onUpdate,
+  temporary = false,
 }: {
   data: RentalCase;
+  temporary?: boolean;
   onUpdate: (changes: Partial<RentalCase>) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -149,9 +151,8 @@ export function RepliesTab({
               aria-describedby="response-hint"
             />
             <p id="response-hint" className="field-hint">
-              Saved in {hosted ? "your account" : "this browser"}. Changing the
-              response clears the earlier
-              suggestion.
+              {temporary ? "Demo edits reset on reload." : `Saved in ${hosted ? "your account" : "this browser"}.`}{" "}
+              Changing the response clears the earlier suggestion.
             </p>
             <div style={{ marginTop: 20 }}>
               <FileDrop

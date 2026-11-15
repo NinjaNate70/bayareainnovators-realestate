@@ -161,7 +161,7 @@ export function EvidencePreview({
   const [url, setUrl] = useState(file?.url ?? "");
   const [error, setError] = useState("");
   useEffect(() => {
-    if (!file || file.url) return;
+    if (!file || file.url || (data.demo && !file.path)) return;
     let alive = true;
     let objectUrl = "";
     getFile(data.id, file)

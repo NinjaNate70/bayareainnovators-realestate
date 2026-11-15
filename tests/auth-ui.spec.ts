@@ -14,6 +14,60 @@ const photo = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+
+test("a signed-out visitor can explore all four tabs of the public demo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Explore the example", exact: true }).click();
+  await expect(page).toHaveURL(/\/case\/demo$/, { timeout: 8000 });
+  await expect(page.getByRole("heading", { name: "782 Cedar Street", exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(page.locator(".charge-card")).toHaveCount(6);
+  await page.locator(".charge-card").filter({ hasText: "Professional cleaning" }).getByRole("button", { name: "L01", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Security deposit itemization", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("alert")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  const tabs = page.getByRole("navigation", { name: "Case", exact: true });
+  await tabs.getByRole("link", { name: "Photos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Possible ordinary wear" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Bedroom · move-out" })).toBeVisible();
+  await page.getByRole("button", { name: "Highlight example marks" }).click();
+  await expect(page.getByRole("button", { name: "Hide example marks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add photos", exact: true })).toHaveCount(0);
+
+  await tabs.getByRole("link", { name: "Letter", exact: true }).click();
+  await page.getByRole("button", { name: "Generate draft" }).click();
+  await expect(page.getByLabel("Edit demand letter")).toHaveValue(/Alex Morgan/);
+  await tabs.getByRole("link", { name: "Replies", exact: true }).click();
+  await expect(page.getByLabel("Landlord response")).toHaveValue(/cleaning/i);
+  await page.getByRole("button", { name: "Prepare reply", exact: true }).click();
+  await expect(page.getByLabel("Edit suggested reply")).toHaveValue(/Cedar Street/);
+  await tabs.getByRole("link", { name: "Letter", exact: true }).click();
+  await expect(page.getByLabel("Edit demand letter")).toHaveValue(/Alex Morgan/);
+  await tabs.getByRole("link", { name: "Replies", exact: true }).click();
+  await expect(page.getByLabel("Edit suggested reply")).toHaveValue(/Cedar Street/);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Prepare reply", exact: true })).toBeVisible();
+
+  await page.goto("/login");
+  await page.getByRole("link", { name: "View demo", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "782 Cedar Street", exact: true })).toBeVisible();
+  await page.goto("/case/new");
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+  await page.goto("/case/c1f4daa9-5434-4098-8b07-63d5abdac7c1");
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+});
+
+test("the public demo works from Help and the phone navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Get help" }).click();
+  await page.getByRole("link", { name: "Explore the example case" }).click();
+  await expect(page.getByRole("heading", { name: "782 Cedar Street" })).toBeVisible();
+  const tabs = page.getByRole("navigation", { name: "Case navigation" });
+  await tabs.getByRole("link", { name: "Photos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Possible ordinary wear" })).toBeVisible();
+});
+
 async function signup(page: Page, email: string, name = "Test Renter") {
   await page.goto("/signup");
   await page.getByLabel("Name", { exact: true }).fill(name);

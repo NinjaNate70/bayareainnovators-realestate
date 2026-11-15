@@ -24,8 +24,10 @@ import { hosted } from "@/lib/backend";
 export function LetterTab({
   data,
   onUpdate,
+  temporary = false,
 }: {
   data: RentalCase;
+  temporary?: boolean;
   onUpdate: (changes: Partial<RentalCase>) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -134,7 +136,7 @@ export function LetterTab({
               />
               <div className="split-row wrap small muted">
                 <span>
-                  Editable · stored in {hosted ? "your account" : "this browser"}
+                  {temporary ? "Editable · resets on reload" : `Editable · stored in ${hosted ? "your account" : "this browser"}`}
                 </span>
                 <span>
                   {data.letter.split(/\s+/).filter(Boolean).length} words

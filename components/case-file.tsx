@@ -29,19 +29,20 @@ import { LetterTab } from "@/components/letter-tab";
 import { PhotosTab } from "@/components/photos-tab";
 import { RepliesTab } from "@/components/replies-tab";
 
-export function CaseFile({ id }: { id: string }) {
+export function CaseFile({ id, example }: { id: string; example?: RentalCase }) {
   const search = useSearchParams();
   const requested = search.get("tab");
   const tab: CaseTab =
     requested === "photos" || requested === "letter" || requested === "replies"
       ? requested
       : "audit";
-  const [data, setData] = useState<RentalCase | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<RentalCase | null>(example ?? null);
+  const [loading, setLoading] = useState(!example);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const current = useRef<RentalCase | null>(null);
+  const current = useRef<RentalCase | null>(example ?? null);
   useEffect(() => {
+    if (example) return;
     let active = true;
     void Promise.resolve().then(async () => {
       if (!active) return;
@@ -62,7 +63,7 @@ export function CaseFile({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [id, retry]);
+  }, [id, retry, example]);
   function update(
     changes:
       Partial<RentalCase> | ((previous: RentalCase) => Partial<RentalCase>),
@@ -73,8 +74,10 @@ export function CaseFile({ id }: { id: string }) {
       ...previous,
       ...(typeof changes === "function" ? changes(previous) : changes),
     };
+    if (example) next.stale = false;
     current.current = next;
     setData(next);
+    if (example) return;
     void saveCase(next)
       .then(() => setError(""))
       .catch(() => {
@@ -152,16 +155,21 @@ export function CaseFile({ id }: { id: string }) {
               : "Move-out date unconfirmed"}
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link href={`/case/new?edit=${data.id}`}>Edit evidence</Link>
-        </Button>
+        {example ? (
+          <Button asChild><Link href="/case/new">Start your own case</Link></Button>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href={`/case/new?edit=${data.id}`}>Edit evidence</Link>
+          </Button>
+        )}
       </div>
       {data.demo && (
         <div className="demo-banner">
           <span className="demo-dot" />
           <span>
-            Illustrative example · prewritten findings and rule topics, not live
-            legal analysis.
+            {example
+              ? "Explore a fictional case with sample findings and evidence. You can draft a letter and reply here. Your edits reset when you reload."
+              : "Illustrative example · prewritten findings and rule topics, not live legal analysis."}
           </span>
         </div>
       )}
@@ -190,11 +198,11 @@ export function CaseFile({ id }: { id: string }) {
       {tab === "audit" ? (
         <AuditTab data={data} />
       ) : tab === "letter" ? (
-        <LetterTab data={data} onUpdate={update} />
+        <LetterTab data={data} onUpdate={update} temporary={!!example} />
       ) : tab === "photos" ? (
-        <PhotosTab data={data} onUpdate={update} />
+        <PhotosTab data={data} onUpdate={update} allowUpload={!example} />
       ) : (
-        <RepliesTab data={data} onUpdate={update} />
+        <RepliesTab data={data} onUpdate={update} temporary={!!example} />
       )}
     </Shell>
   );

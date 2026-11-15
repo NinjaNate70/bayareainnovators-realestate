@@ -316,10 +316,9 @@ export function Landing() {
         <details>
           <summary>What does the hackathon demo do?</summary>
           <p>
-            The complete example uses six prewritten charges and illustrative
-            photo comparisons. You can also upload your own evidence and enter
-            facts locally. Live extraction, AI review, and verified rule checks
-            are future API connections.
+            Explore six sample deductions, open the supporting documents,
+            compare move-in and move-out images, and practice drafting a letter
+            and a reply. The example opens without an account.
           </p>
         </details>
       </section>

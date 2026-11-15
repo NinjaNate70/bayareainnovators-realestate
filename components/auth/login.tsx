@@ -116,6 +116,9 @@ export function Login() {
       <p className="auth-switch">
         New here? <Link href={signup}>Create an account</Link>
       </p>
+      <p className="auth-switch">
+        <Link href="/case/demo">View demo</Link>
+      </p>
       {process.env.NODE_ENV === "development" && backendName === "local" && (
         <DemoPanel
           onFill={(email, password) => {

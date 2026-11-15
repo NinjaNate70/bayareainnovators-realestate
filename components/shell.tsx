@@ -35,7 +35,8 @@ export function Shell({
 }) {
   const path = usePathname();
   const { session } = useAuth();
-  const pageTitle = path === "/case/new" ? "New case"
+  const pageTitle = path === "/case/demo" ? "Demo case"
+    : path === "/case/new" ? "New case"
     : path.startsWith("/case/") ? "Case file"
     : path === "/account" ? "Account settings"
     : path === "/documents" ? "Documents"
@@ -157,7 +158,7 @@ export function Shell({
         <main id="main" tabIndex={-1} className="page-content" key={path}>
           {children}
         </main>
-        {session && (
+        {session && caseId !== "demo" && (
           <CaseAssistant
             caseId={caseId ?? draftCaseId}
             page={caseId ? tab : draftCaseId ? "wizard" : "other"}

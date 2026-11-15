@@ -11,8 +11,10 @@ import { UploadZone } from "@/components/upload-zone";
 export function PhotosTab({
   data,
   onUpdate,
+  allowUpload = true,
 }: {
   data: RentalCase;
+  allowUpload?: boolean;
   onUpdate: (
     changes:
       Partial<RentalCase> | ((previous: RentalCase) => Partial<RentalCase>),
@@ -65,7 +67,7 @@ export function PhotosTab({
         <h2>Before. After. In context.</h2>
         <p>Compare the evidence behind a charge, one view at a time.</p>
       </div>
-      {adding && (
+      {allowUpload && adding && (
         <Card className="stack" style={{ marginBottom: 24 }}>
           <div className="split-row">
             <h3>Add your photos</h3>
@@ -106,10 +108,10 @@ export function PhotosTab({
             Photos are compared one charge at a time. Your photos stay with
             your case, and you can add charges if your landlord sends a list.
           </p>
-          <Button onClick={() => setAdding(true)}>
+          {allowUpload && <Button onClick={() => setAdding(true)}>
             <Plus size={18} aria-hidden="true" />
             Add photos
-          </Button>
+          </Button>}
         </div>
       ) : !photos.length ? (
         <div className="empty-block">
@@ -119,10 +121,10 @@ export function PhotosTab({
             Your document review is still available. Photos can help clarify a
             charge.
           </p>
-          <Button onClick={() => setAdding(true)}>
+          {allowUpload && <Button onClick={() => setAdding(true)}>
             <Plus size={18} aria-hidden="true" />
             Add photos
-          </Button>
+          </Button>}
         </div>
       ) : (
         <>
@@ -213,7 +215,7 @@ export function PhotosTab({
                       <Camera size={36} aria-hidden="true" />
                       <p>{side.title} photo missing</p>
                       <span className="small muted">
-                        Choose a photo above or add one.
+                        {allowUpload ? "Choose a photo above or add one." : "Choose a sample photo above."}
                       </span>
                     </div>
                   )}
@@ -288,12 +290,14 @@ export function PhotosTab({
           </div>
         </>
       )}
-      <ActionBar>
-        <Button onClick={() => setAdding(!adding)}>
-          <Plus size={18} aria-hidden="true" />
-          {adding ? "Finish adding photos" : "Add photos"}
-        </Button>
-      </ActionBar>
+      {allowUpload && (
+        <ActionBar>
+          <Button onClick={() => setAdding(!adding)}>
+            <Plus size={18} aria-hidden="true" />
+            {adding ? "Finish adding photos" : "Add photos"}
+          </Button>
+        </ActionBar>
+      )}
     </>
   );
 }
