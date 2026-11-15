@@ -129,16 +129,12 @@ export function EvidencePreview({
   const [url, setUrl] = useState(file?.url ?? "");
   const [error, setError] = useState("");
   useEffect(() => {
-    if (!file || file.url || data.demo) return;
+    if (!file || file.url) return;
     let alive = true;
     let objectUrl = "";
-    getFile(`${data.id}:${evidenceId}`)
-      .then((blob) => {
-        if (!blob)
-          throw new Error(
-            "Original unavailable in this browser. Please add the file again.",
-          );
-        objectUrl = URL.createObjectURL(blob);
+    getFile(data.id,file)
+      .then((signedUrl) => {
+        objectUrl = signedUrl;
         if (alive) setUrl(objectUrl);
       })
       .catch((e) => {

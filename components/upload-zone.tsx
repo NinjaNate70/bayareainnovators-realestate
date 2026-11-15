@@ -1,5 +1,5 @@
 "use client";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { FileUp, FileText, X, LoaderCircle } from "lucide-react";
 import type { Evidence } from "@/types/case";
 import { storeFile } from "@/lib/cases";
@@ -21,8 +21,10 @@ export function UploadZone({
   const id = useId();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const latch=useRef(false);
   async function add(list: FileList | null) {
-    if (!list) return;
+    if (!list || latch.current) return;
+    latch.current=true;
     setError("");
     setBusy(true);
     try {
@@ -40,8 +42,9 @@ export function UploadZone({
             `${file.name} is larger than 10MB. Choose a smaller file.`,
           );
         const fid = `${kind === "before" || kind === "after" ? "P" : "D"}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-        await storeFile(`${caseId}:${fid}`, file);
+        const metadata=await storeFile(caseId,fid,file);
         onAdd({
+          ...metadata,
           id: fid,
           name: file.name,
           kind,
@@ -54,6 +57,7 @@ export function UploadZone({
         e instanceof Error ? e.message : "File could not be saved. Try again.",
       );
     } finally {
+      latch.current=false;
       setBusy(false);
     }
   }

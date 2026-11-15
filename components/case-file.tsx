@@ -40,10 +40,11 @@ export function CaseFile({ id }: { id: string }) {
   const current = useRef<RentalCase | null>(null);
   useEffect(() => {
     let active = true;
-    void Promise.resolve().then(() => {
+    void Promise.resolve().then(async () => {
       if (!active) return;
       try {
-        const loaded = readCase(id);
+        const loaded = await readCase(id);
+        if(!active)return;
         current.current = loaded;
         setData(loaded);
         setError("");
@@ -71,14 +72,11 @@ export function CaseFile({ id }: { id: string }) {
     };
     current.current = next;
     setData(next);
-    try {
-      saveCase(next);
-      setError("");
-    } catch {
+    void saveCase(next).then(()=>setError("")).catch(()=>{
       setError(
         "Your edits are on this page but could not be saved. Keep this tab open and retry.",
       );
-    }
+    });
   }
   if (loading)
     return (

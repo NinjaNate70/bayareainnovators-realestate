@@ -17,7 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UploadZone } from "@/components/upload-zone";
 import { freshCase, money, readCase, saveCase } from "@/lib/cases";
-import { demoCase } from "@/lib/fixtures/demo-case";
+import { getBackend } from "@/lib/backend";
+import { fromRow } from "@/lib/db/mapping";
+import { unwrap } from "@/lib/cases";
+import { rememberCase } from "@/lib/auth/drafts";
 import type { Evidence, RentalCase } from "@/types/case";
 
 const steps = ["Letter", "Details", "Photos", "Review"];
@@ -36,18 +39,17 @@ export function CaseWizard() {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     let active = true;
-    void Promise.resolve().then(() => {
+    void Promise.resolve().then(async () => {
       if (!active) return;
       try {
         const params = new URLSearchParams(location.search);
         const edit = params.get("edit");
-        const draftId = localStorage.getItem("tenant-shield:wizard");
-        const existing = edit
-          ? readCase(edit)
-          : draftId
-            ? readCase(draftId)
-            : null;
+        const recent = unwrap(await getBackend().data.listCases()).find(c=>!c.audited);
+        const existing = edit ? await readCase(edit) : recent ? await readCase(recent.id) : null;
+        if(edit && !existing)throw new Error("This case is unavailable.");
         const value = existing ?? freshCase();
+        if(!existing)await saveCase(value);
+        if(!active)return;
         setData(value);
         const requested = steps.findIndex(
           (s) => s.toLowerCase() === params.get("step"),
@@ -55,9 +57,8 @@ export function CaseWizard() {
         setStep(requested >= 0 ? Math.min(requested, value.completedStep) : 0);
         setManual(value.charges.length > 0 && !value.demo);
       } catch {
-        setData(freshCase());
         setError(
-          "We could not restore your saved draft. You can start a new case below.",
+          "We could not restore your draft. Your saved records have not been changed. Reload to try again.",
         );
       }
     });
@@ -68,14 +69,13 @@ export function CaseWizard() {
   useEffect(() => {
     if (!data) return;
     let active = true;
-    void Promise.resolve().then(() => {
+    void Promise.resolve().then(async () => {
       if (!active) return;
       try {
-        saveCase(data);
-        localStorage.setItem("tenant-shield:wizard", data.id);
-        setSaveStatus("Draft saved in this browser");
+        await saveCase(data);
+        if(active)setSaveStatus("Draft saved in this browser");
       } catch {
-        setSaveStatus(
+        if(active)setSaveStatus(
           "Draft not saved. Keep this page open and retry when browser storage is available.",
         );
       }
@@ -91,7 +91,7 @@ export function CaseWizard() {
     return (
       <Shell>
         <div className="loading-state" role="status">
-          <LoaderCircle className="spin" /> Loading your draft…
+          {error ? <><p role="alert">{error}</p><Button onClick={()=>location.reload()}>Try again</Button></> : <><LoaderCircle className="spin" /> Loading your draft…</>}
         </div>
       </Shell>
     );
@@ -109,16 +109,18 @@ export function CaseWizard() {
         "evidence",
       ].includes(key),
     );
-    setData((d) =>
-      d
+    setData((d) => {
+      const next=d
         ? {
             ...d,
             ...value,
             demo: changesFacts ? false : (value.demo ?? d.demo),
             stale: changesFacts && d.audited ? true : d.stale,
           }
-        : d,
-    );
+        : d;
+      if(next)rememberCase(next);
+      return next;
+    });
   }
   function navigate(next: number) {
     if (!data) return;
@@ -224,8 +226,7 @@ export function CaseWizard() {
                 "Your charge is recorded. Automated evidence and legal review is not connected in this MVP. Add supporting records and review the charge before drawing a conclusion.",
             })),
       };
-      saveCase(value);
-      localStorage.removeItem("tenant-shield:wizard");
+      await saveCase(value);
       router.push(`/case/${value.id}`);
     } catch {
       setError(
@@ -348,9 +349,10 @@ export function CaseWizard() {
                       </p>
                       <Button
                         variant="outline"
-                        onClick={() => {
-                          const value = structuredClone(demoCase);
-                          value.id = `demo-${Date.now()}`;
+                        onClick={async () => {
+                          const owned = await getBackend().data.getCase("demo");
+                          if(!owned.data){setError("The example belongs to the demo account. Sign in with demo@tenantshield.app to explore it.");return;}
+                          const value = fromRow(owned.data);
                           value.audited = false;
                           setData(value);
                           setManual(false);

@@ -20,19 +20,25 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SourceChip, VerdictChip } from "@/components/evidence";
 import { demoCase } from "@/lib/fixtures/demo-case";
-import { readCase, money } from "@/lib/cases";
+import { money } from "@/lib/cases";
+import { useAuth } from "@/components/auth/provider";
+import { getBackend } from "@/lib/backend";
+import { fromRow } from "@/lib/db/mapping";
 import type { RentalCase } from "@/types/case";
 
 export function Landing() {
+  const {session}=useAuth();
   const [recent, setRecent] = useState<RentalCase | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    void Promise.resolve().then(() => {
+    void Promise.resolve().then(async () => {
       if (!active) return;
       try {
-        const id = localStorage.getItem("tenant-shield:current");
-        if (id) setRecent(readCase(id));
+        if(!session){setRecent(null);return;}
+        const result=await getBackend().data.getMostRecentCase();
+        if(result.error)throw new Error(result.error.message);
+        if(active)setRecent(result.data?fromRow(result.data):null);
       } catch {
         setError(
           "We couldn’t load your saved case. You can still start a case or explore the demo.",
@@ -42,7 +48,7 @@ export function Landing() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [session]);
   return (
     <Shell>
       <div className="landing-heading">

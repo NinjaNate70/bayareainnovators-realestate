@@ -1,87 +1,39 @@
-import type { RentalCase } from "@/types/case";
-import { demoCase } from "@/lib/fixtures/demo-case";
-
-export const money = (n: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
-export function freshCase(): RentalCase {
-  return {
-    id: `case-${Date.now()}`,
-    demo: false,
-    address: "",
-    renter: "",
-    landlord: "",
-    moveOut: "",
-    received: "",
-    deposit: 0,
-    returned: 0,
-    charges: [],
-    evidence: [],
-    completedStep: 0,
-    audited: false,
-    stale: false,
-    letter: "",
-    replyBy: "",
-    incoming: "",
-    reply: "",
-  };
+import type { Evidence, RentalCase } from "@/types/case";
+import { getBackend } from "@/lib/backend";
+import { fromRow, toRow } from "@/lib/db/mapping";
+import { bufferedCase, markSaved, rememberCase, restorePosition } from "@/lib/auth/drafts";
+import type { Result } from "@/types/backend";
+export const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
+export function freshCase():RentalCase{return {id:crypto.randomUUID(),demo:false,address:"",renter:"",landlord:"",moveOut:"",received:"",deposit:0,returned:0,charges:[],evidence:[],completedStep:0,audited:false,stale:false,letter:"",replyBy:"",incoming:"",reply:""};}
+export function unwrap<T>(response:Result<T>):T {if(response.error)throw new Error(response.error.message);return response.data as T;}
+const queues=new Map<string,Promise<unknown>>();
+export async function readCase(id:string):Promise<RentalCase|null>{
+  const backend=getBackend(),row=unwrap(await backend.data.getCase(id));if(!row)return null;
+  const checkpoint=bufferedCase(row.id,row.user_id)??unwrap(await backend.data.getDraft(row.id));
+  if(checkpoint && "charges" in checkpoint.payload){restorePosition(checkpoint);return structuredClone(checkpoint.payload);}
+  return fromRow(row);
 }
-// TODO(api): Replace browser-only case persistence with authenticated case storage.
-export function readCase(id: string): RentalCase | null {
-  const raw = localStorage.getItem(`tenant-shield:${id}`);
-  if (raw) {
-    const value = JSON.parse(raw);
-    if (
-      !value ||
-      value.id !== id ||
-      !Array.isArray(value.charges) ||
-      !Array.isArray(value.evidence)
-    )
-      throw new Error("Invalid saved case");
-    return value;
-  }
-  return id === "demo" ? structuredClone(demoCase) : null;
-}
-export function saveCase(value: RentalCase) {
-  localStorage.setItem(`tenant-shield:${value.id}`, JSON.stringify(value));
-  localStorage.setItem("tenant-shield:current", value.id);
-}
-
-function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const r = indexedDB.open("tenant-shield-evidence", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("files");
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
+export function saveCase(value:RentalCase):Promise<void>{
+  rememberCase(value);const snapshot=structuredClone(value);
+  const previous=queues.get(value.id)??Promise.resolve();
+  const next=previous.catch(()=>{}).then(async()=>{
+    const backend=getBackend(),old=unwrap(await backend.data.getCase(snapshot.id)),input=toRow(snapshot,old??undefined);
+    const row=old?unwrap(await backend.data.updateCase(snapshot.id,input,old.revision)):unwrap(await backend.data.createCase(input));
+    const buffer=bufferedCase(snapshot.id,row.user_id);
+    if(buffer&&JSON.stringify(buffer.payload)===JSON.stringify(snapshot)){markSaved(snapshot.id,row.user_id);unwrap(await backend.data.clearDraft(snapshot.id));}
   });
+  queues.set(value.id,next);void next.finally(()=>{if(queues.get(value.id)===next)queues.delete(value.id);}).catch(()=>{});return next;
 }
-// TODO(api): Replace local IndexedDB originals with private evidence upload and retrieval.
-export async function storeFile(id: string, file: File) {
-  const db = await database();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("files", "readwrite");
-      tx.objectStore("files").put(file, id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  } finally {
-    db.close();
-  }
+export async function flushCases(){await Promise.all([...queues.values()]);}
+export async function storeFile(caseId:string,sourceId:string,file:File):Promise<Pick<Evidence,"fileId"|"path"|"bucket">>{
+  const backend=getBackend(),session=unwrap(await backend.auth.getSession()).session;if(!session)throw new Error("Sign in to keep going.");
+  await flushCases();
+  const bucket=file.type.startsWith("image/")&&sourceId.startsWith("P")?"photos":"documents";
+  const filename=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(-100)||"original";
+  const path=`${session.user.id}/${caseId}/${crypto.randomUUID()}-${filename}`;
+  const metadata=unwrap(await backend.storage.from(bucket).upload(path,file));return {fileId:metadata.id,path,bucket};
 }
-export async function getFile(id: string): Promise<Blob | undefined> {
-  const db = await database();
-  try {
-    return await new Promise((resolve, reject) => {
-      const r = db.transaction("files").objectStore("files").get(id);
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
-    });
-  } finally {
-    db.close();
-  }
+export async function getFile(caseId:string,evidence:Evidence):Promise<string>{
+  if(!evidence.path||!evidence.bucket)throw new Error("Original unavailable in this browser. Please add the file again.");
+  const backend=getBackend();unwrap(await backend.data.getCase(caseId));return unwrap(await backend.storage.from(evidence.bucket).createSignedUrl(evidence.path,300)).signedUrl;
 }
