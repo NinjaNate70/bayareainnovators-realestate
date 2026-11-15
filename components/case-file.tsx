@@ -67,6 +67,7 @@ export function CaseFile({ id, example }: { id: string; example?: RentalCase }) 
   function update(
     changes:
       Partial<RentalCase> | ((previous: RentalCase) => Partial<RentalCase>),
+    persist = true,
   ) {
     const previous = current.current;
     if (!previous) return;
@@ -77,7 +78,7 @@ export function CaseFile({ id, example }: { id: string; example?: RentalCase }) 
     if (example) next.stale = false;
     current.current = next;
     setData(next);
-    if (example) return;
+    if (example || !persist) return;
     void saveCase(next)
       .then(() => setError(""))
       .catch(() => {

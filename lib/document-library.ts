@@ -1,6 +1,8 @@
 // The document library: a renter's files kept in one place, outside any case.
 // They live in the private "library" storage bucket under
-// <user id>/files/<random id>-<file name>. No local imports, so tests load it directly.
+// <user id>/files/<random id>-<file name>.
+
+import type { Evidence } from '@/types/case';
 
 export const libraryBucket = 'library';
 export const libraryFolder = (userId: string) => `${userId}/files`;
@@ -65,6 +67,54 @@ export function storedName(original: string, id: string = crypto.randomUUID()) {
 
 // The name to show for a stored file.
 export const displayName = (stored: string) => stored.replace(idPrefix, '') || stored;
+
+export const caseUploadMaxBytes = 10 * 1024 * 1024;
+const photoTypes = ['image/jpeg', 'image/png'];
+const documentTypes = ['application/pdf', ...photoTypes];
+export const caseUploadTypes = (kind: Evidence['kind']) =>
+  kind === 'before' || kind === 'after' ? photoTypes : documentTypes;
+
+export type CaseLibraryFile = {
+  id: string;
+  objectName: string;
+  name: string;
+  type: string;
+  size: number;
+};
+
+export function caseLibraryFile(
+  item: { id: string | null; name: string; metadata?: Record<string, unknown> | null },
+  kind: Evidence['kind'],
+): CaseLibraryFile | null {
+  if (!item.id || item.name.startsWith('.') || /[/\\%\u0000-\u001f]/.test(item.name)) return null;
+  const name = displayName(item.name);
+  const mime = item.metadata?.mimetype;
+  const type = typeof mime === 'string' && mime && mime !== 'application/octet-stream'
+    ? mime
+    : libraryType({ name, type: '' });
+  const size = item.metadata?.size;
+  if (!caseUploadTypes(kind).includes(type) || typeof size !== 'number' ||
+      !Number.isFinite(size) || size <= 0 || size > caseUploadMaxBytes) return null;
+  return { id: item.id, objectName: item.name, name, type, size };
+}
+
+export function mergeCaseLibraryEvidence(
+  snapshot: Evidence[],
+  persisted: Evidence[],
+  removed: ReadonlySet<string>,
+) {
+  const snapshotIds = new Set(snapshot.map((file) => file.id));
+  const library = persisted.filter((file) => file.libraryFileId && !removed.has(file.id));
+  const byId = new Map(library.map((file) => [file.id, file]));
+  const added = library.filter((file) => !snapshotIds.has(file.id));
+  return {
+    evidence: [
+      ...snapshot.flatMap((file) => file.libraryFileId ? byId.get(file.id) ?? [] : file),
+      ...added,
+    ],
+    addedSinceSnapshot: added.length > 0,
+  };
+}
 
 // Whether a browser can show the file in a tab; anything else is downloaded.
 export const viewable = (name: string) => ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt'].includes(extension(name));

@@ -2,9 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, ImageIcon, X, LoaderCircle } from "lucide-react";
 import type { Evidence } from "@/types/case";
+import { useAuth } from "@/components/auth/provider";
+import { CaseLibraryPicker } from "@/components/case-library-picker";
 import { FileDrop } from "@/components/file-drop";
-import { storeFile } from "@/lib/cases";
+import { removeLibraryAttachment, storeFile } from "@/lib/cases";
 import { hosted } from "@/lib/backend";
+import { caseUploadMaxBytes, caseUploadTypes } from "@/lib/document-library";
 
 type Pending = {
   key: string;
@@ -28,71 +31,73 @@ export function UploadZone({
   caseId: string;
   kind: Evidence["kind"];
   files: Evidence[];
-  onAdd: (file: Evidence) => void;
+  onAdd: (file: Evidence, caseId: string) => void;
   onRemove: (id: string) => void;
   title: string;
   // Optional line under the title saying what belongs here.
   note?: string;
 }) {
+  const { session } = useAuth();
   const [error, setError] = useState("");
   // Files being stored right now. Each shows at once with an Uploading badge,
   // and turns into a saved file as soon as it is stored.
   const [pending, setPending] = useState<Pending[]>([]);
   // Thumbnails for images added in this visit, by saved file id.
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const queue = useRef<Promise<void>>(Promise.resolve());
   const urls = useRef(new Set<string>());
+  const active = useRef(false);
   useEffect(() => {
+    active.current = true;
     const open = urls.current;
     return () => {
+      active.current = false;
       for (const url of open) URL.revokeObjectURL(url);
+      open.clear();
     };
   }, []);
+
+  const accepted = caseUploadTypes(kind);
+  function fileProblem(file: File) {
+    if (!accepted.includes(file.type))
+      return isPhoto(kind) ? "Choose a JPG or PNG photo." : "Choose a PDF, JPG or PNG file.";
+    if (file.size === 0) return `${file.name} is empty.`;
+    if (file.size > caseUploadMaxBytes)
+      return `${file.name} is larger than 10MB. Choose a smaller file.`;
+    return "";
+  }
+
+  async function save(file: File, source?: { id: string; owner: string }) {
+    const key = source ? `library-${source.id}` : crypto.randomUUID();
+    const preview = active.current && file.type.startsWith("image/")
+      ? URL.createObjectURL(file)
+      : undefined;
+    if (preview) urls.current.add(preview);
+    setPending((previous) => [
+      ...previous.filter((item) => item.key !== key),
+      { key, name: file.name, size: file.size, preview },
+    ]);
+    try {
+      const fid = `${isPhoto(kind) ? "P" : "D"}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const evidence = await storeFile(caseId, fid, file, kind, source);
+      if (preview) setPreviews((all) => ({ ...all, [evidence.id]: preview }));
+      onAdd(evidence, caseId);
+      setPending((previous) => previous.filter((item) => item.key !== key));
+      return true;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "File could not be saved. Try again.";
+      setPending((previous) => previous.map((item) =>
+        item.key === key ? { ...item, error: message } : item,
+      ));
+      return false;
+    }
+  }
 
   function add(list: File[]) {
     const problems: string[] = [];
     for (const file of list) {
-      if (
-        !["application/pdf", "image/jpeg", "image/png"].includes(file.type) ||
-        (isPhoto(kind) && file.type === "application/pdf")
-      ) {
-        problems.push("Choose a JPG or PNG photo, or a PDF for a document.");
-        continue;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        problems.push(`${file.name} is larger than 10MB. Choose a smaller file.`);
-        continue;
-      }
-      const key = crypto.randomUUID();
-      const preview = file.type.startsWith("image/")
-        ? URL.createObjectURL(file)
-        : undefined;
-      if (preview) urls.current.add(preview);
-      setPending((p) => [...p, { key, name: file.name, size: file.size, preview }]);
-      // One file at a time: each one rewrites the case record.
-      queue.current = queue.current.then(async () => {
-        try {
-          const fid = `${isPhoto(kind) ? "P" : "D"}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-          const metadata = await storeFile(caseId, fid, file, kind);
-          if (preview) setPreviews((all) => ({ ...all, [fid]: preview }));
-          onAdd({ ...metadata, id: fid, name: file.name, kind, size: file.size, type: file.type });
-          setPending((p) => p.filter((x) => x.key !== key));
-        } catch (e) {
-          setPending((p) =>
-            p.map((x) =>
-              x.key === key
-                ? {
-                    ...x,
-                    error:
-                      e instanceof Error
-                        ? e.message
-                        : "File could not be saved. Try again.",
-                  }
-                : x,
-            ),
-          );
-        }
-      });
+      const problem = fileProblem(file);
+      if (problem) problems.push(problem);
+      else void save(file);
     }
     setError(problems[0] ?? "");
   }
@@ -104,11 +109,7 @@ export function UploadZone({
       label={title}
       description={note}
       multiple
-      accept={
-        isPhoto(kind)
-          ? "image/jpeg,image/png"
-          : "application/pdf,image/jpeg,image/png"
-      }
+      accept={accepted.join(",")}
       hint={`${isPhoto(kind) ? "JPG or PNG" : "PDF, JPG or PNG"} · up to 10MB each`}
       note={
         hosted
@@ -117,6 +118,19 @@ export function UploadZone({
       }
       onFiles={add}
     >
+      {hosted && session && (
+        <CaseLibraryPicker
+          key={`${session.user.id}/${caseId}/${kind}`}
+          userId={session.user.id}
+          kind={kind}
+          evidence={files}
+          onCopy={async (file, source) => {
+            const problem = fileProblem(file);
+            setError(problem);
+            return !problem && save(file, source);
+          }}
+        />
+      )}
       <p role="status" className="small muted upload-status">
         {saving > 0 && (
           <>
@@ -137,7 +151,9 @@ export function UploadZone({
             <span>
               {f.name}
               <small>
-                {f.size
+                {f.libraryFileId
+                  ? "Copied from My Documents"
+                  : f.size
                   ? `${Math.ceil(f.size / 1024)} KB · saved ${hosted ? "to your account" : "in this browser"}`
                   : "Example file"}
               </small>
@@ -146,7 +162,10 @@ export function UploadZone({
               type="button"
               className="icon-button"
               aria-label={`Remove ${f.name}`}
-              onClick={() => onRemove(f.id)}
+              onClick={() => {
+                if (f.libraryFileId) removeLibraryAttachment(caseId, f.id);
+                onRemove(f.id);
+              }}
             >
               <X size={18} aria-hidden="true" />
             </button>

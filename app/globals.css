@@ -1275,6 +1275,74 @@ textarea {
 .upload-group > p {
   margin: 8px 0;
 }
+.case-library-picker > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--green);
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.case-library-picker > summary::-webkit-details-marker {
+  display: none;
+}
+.case-library-chevron {
+  flex: none;
+  margin-left: auto;
+}
+.case-library-picker[open] .case-library-chevron {
+  transform: rotate(180deg);
+}
+.case-library-picker fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.case-library-picker legend {
+  padding: 0 4px;
+  font-weight: 700;
+}
+.case-library-picker fieldset > p {
+  margin: 0 0 8px;
+}
+.case-library-options {
+  list-style: none;
+  padding: 0 2px;
+  margin: 0 0 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.case-library-options li + li {
+  border-top: 1px solid var(--line);
+}
+.case-library-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.case-library-options input {
+  flex: none;
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  padding: 0;
+  accent-color: var(--green);
+}
+.case-library-options span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.case-library-options small {
+  display: block;
+  color: var(--muted);
+}
 .file-list {
   list-style: none;
   padding: 0;

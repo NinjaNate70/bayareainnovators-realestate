@@ -18,25 +18,19 @@ export function PhotosTab({
   onUpdate: (
     changes:
       Partial<RentalCase> | ((previous: RentalCase) => Partial<RentalCase>),
+    persist?: boolean,
   ) => void;
 }) {
   const [chargeIndex, setChargeIndex] = useState(0);
   const [adding, setAdding] = useState(false);
-  const [before, setBefore] = useState(
-    data.photoPairs?.[data.charges[0]?.id]?.before ??
-      data.evidence.find((f) => f.kind === "before")?.id ??
-      "",
-  );
-  const [after, setAfter] = useState(
-    data.photoPairs?.[data.charges[0]?.id]?.after ??
-      data.evidence.find((f) => f.kind === "after")?.id ??
-      "",
-  );
   const [marks, setMarks] = useState(false);
   const photos = data.evidence.filter(
     (e) => e.kind === "before" || e.kind === "after",
   );
   const charge = data.charges[chargeIndex];
+  const pair = data.photoPairs?.[charge?.id];
+  const before = pair?.before ?? (chargeIndex === 0 ? photos.find((file) => file.kind === "before")?.id ?? "" : "");
+  const after = pair?.after ?? (chargeIndex === 0 ? photos.find((file) => file.kind === "after")?.id ?? "" : "");
   const isExamplePair =
     data.demo &&
     !data.stale &&
@@ -47,19 +41,6 @@ export function PhotosTab({
   function changeCharge(i: number) {
     setChargeIndex(i);
     setMarks(false);
-    const pair = data.photoPairs?.[data.charges[i]?.id];
-    if (pair) {
-      setBefore(pair.before);
-      setAfter(pair.after);
-      return;
-    }
-    if (i !== 0) {
-      setBefore("");
-      setAfter("");
-    } else {
-      setBefore(data.evidence.find((f) => f.kind === "before")?.id ?? "");
-      setAfter(data.evidence.find((f) => f.kind === "after")?.id ?? "");
-    }
   }
   return (
     <>
@@ -82,19 +63,27 @@ export function PhotosTab({
               kind={kind}
               title={kind === "before" ? "Move-in photos" : "Move-out photos"}
               files={data.evidence}
-              onAdd={(file) =>
+              onAdd={(file, caseId) =>
+                onUpdate((previous) => previous.id === caseId
+                  ? {
+                      evidence: [...previous.evidence.filter((e) => e.id !== file.id), file],
+                      demo: false,
+                      stale: true,
+                    }
+                  : {}, false)
+              }
+              onRemove={(id) =>
                 onUpdate((previous) => ({
-                  evidence: [...previous.evidence, file],
+                  evidence: previous.evidence.filter((f) => f.id !== id),
+                  photoPairs: previous.photoPairs && Object.fromEntries(
+                    Object.entries(previous.photoPairs).map(([chargeId, pair]) => [
+                      chargeId,
+                      { before: pair.before === id ? "" : pair.before, after: pair.after === id ? "" : pair.after },
+                    ]),
+                  ),
                   demo: false,
                   stale: true,
                 }))
-              }
-              onRemove={(id) =>
-                onUpdate({
-                  evidence: data.evidence.filter((f) => f.id !== id),
-                  demo: false,
-                  stale: true,
-                })
               }
             />
           ))}
@@ -155,13 +144,11 @@ export function PhotosTab({
                   kind: "before",
                   title: "Move-in",
                   selected: before,
-                  set: setBefore,
                 },
                 {
                   kind: "after",
                   title: "Move-out",
                   selected: after,
-                  set: setAfter,
                 },
               ] as const
             ).map((side) => (
@@ -178,7 +165,6 @@ export function PhotosTab({
                   value={side.selected}
                   onChange={(e) => {
                     const selected = e.target.value;
-                    side.set(selected);
                     if (charge)
                       onUpdate((previous) => ({
                         photoPairs: {

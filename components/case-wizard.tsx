@@ -361,15 +361,15 @@ export function CaseWizard() {
     }
   }
   // TODO(api): Extract letter/lease fields from saved originals and ask the renter to confirm them before analysis.
-  const addFile = (e: Evidence) =>
+  const addFile = (e: Evidence, caseId: string) =>
     setData((d) =>
-      d
+      d?.id === caseId
         ? {
             ...d,
             demo: false,
             audited: false,
             stale: true,
-            evidence: [...d.evidence, e],
+            evidence: [...d.evidence.filter((file) => file.id !== e.id), e],
           }
         : d,
     );

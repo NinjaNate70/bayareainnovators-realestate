@@ -1,4 +1,5 @@
 import type { Evidence, RentalCase } from "@/types/case";
+import { mergeCaseLibraryEvidence } from "@/lib/document-library";
 import { getBackend } from "@/lib/backend";
 import { fromRow, toRow } from "@/lib/db/mapping";
 import {
@@ -46,6 +47,13 @@ export function unwrap<T>(response: Result<T>): T {
   return response.data as T;
 }
 const queues = new Map<string, Promise<unknown>>();
+const libraryRemovals = new Map<string, Set<string>>();
+
+export function removeLibraryAttachment(caseId: string, id: string) {
+  const removed = libraryRemovals.get(caseId) ?? new Set<string>();
+  removed.add(id);
+  libraryRemovals.set(caseId, removed);
+}
 export async function readCase(id: string): Promise<RentalCase | null> {
   const backend = getBackend(),
     row = unwrap(await backend.data.getCase(id));
@@ -63,7 +71,10 @@ export async function readCase(id: string): Promise<RentalCase | null> {
   markSaved(row.id, row.user_id);
   return value;
 }
-export function saveCase(value: RentalCase): Promise<void> {
+export function saveCase(
+  value: RentalCase,
+  copy?: { evidence: Evidence; revision: number },
+): Promise<void> {
   rememberCase(value);
   const owner = draftIdentity()?.user.id;
   const snapshot = structuredClone(value);
@@ -74,14 +85,31 @@ export function saveCase(value: RentalCase): Promise<void> {
       const session = unwrap(await getBackend().auth.getSession()).session;
       if (!session || session.user.id !== owner)
         throw new Error("Sign in to keep going. Your draft is still here.");
-      const backend = getBackend(),
-        old = unwrap(await backend.data.getCase(snapshot.id)),
-        input = toRow(snapshot, old ?? undefined);
+      const backend = getBackend();
+      const old = unwrap(await backend.data.getCase(snapshot.id));
+      if (copy && old?.revision !== copy.revision)
+        throw Object.assign(new Error("The case changed while the file was being added."), { code: "conflict" });
+      const removed = new Set(libraryRemovals.get(snapshot.id));
+      const persisted = old ? fromRow(old).evidence : snapshot.evidence;
+      // Library attachments may have changed in another tab since this view loaded.
+      const merged = mergeCaseLibraryEvidence(
+        snapshot.evidence,
+        copy ? [...persisted, copy.evidence] : persisted,
+        removed,
+      );
+      const input = toRow({
+        ...snapshot,
+        evidence: merged.evidence,
+        stale: snapshot.stale || merged.addedSinceSnapshot,
+      }, old ?? undefined);
       const row = old
         ? unwrap(
             await backend.data.updateCase(snapshot.id, input, old.revision),
           )
         : unwrap(await backend.data.createCase(input));
+      const pendingRemovals = libraryRemovals.get(snapshot.id);
+      for (const id of removed) pendingRemovals?.delete(id);
+      if (!pendingRemovals?.size) libraryRemovals.delete(snapshot.id);
       const buffer = bufferedCase(snapshot.id, row.user_id);
       if (
         buffer &&
@@ -107,13 +135,19 @@ export async function storeFile(
   sourceId: string,
   file: File,
   kind: Evidence["kind"],
-): Promise<Pick<Evidence, "fileId" | "path" | "bucket">> {
+  librarySource?: { id: string; owner: string },
+): Promise<Evidence> {
   const owner = draftIdentity()?.user.id;
-  if (!owner) throw new Error("Sign in to keep going.");
+  if (!owner || (librarySource && librarySource.owner !== owner))
+    throw new Error("Sign in to keep going.");
+  const previous = librarySource && [...pendingUploads.values()].find(
+    (item) => item.owner === owner && item.caseId === caseId &&
+      item.kind === kind && item.libraryFileId === librarySource.id,
+  );
   const bucket = kind === "before" || kind === "after" ? "photos" : "documents";
   const filename =
     file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100) || "original";
-  const upload: PendingUpload = {
+  const upload: PendingUpload = previous || {
     owner,
     caseId,
     sourceId,
@@ -121,6 +155,7 @@ export async function storeFile(
     kind,
     bucket,
     path: `${owner}/${caseId}/${crypto.randomUUID()}-${filename}`,
+    libraryFileId: librarySource?.id,
   };
   pendingUploads.set(upload.path, upload);
   try {
@@ -143,8 +178,10 @@ type PendingUpload = {
   kind: Evidence["kind"];
   bucket: "documents" | "photos";
   path: string;
+  libraryFileId?: string;
 };
 const pendingUploads = new Map<string, PendingUpload>();
+const uploadQueues = new Map<string, Promise<Evidence>>();
 export function forgetUploads(owner: string) {
   for (const [key, value] of pendingUploads)
     if (value.owner === owner) pendingUploads.delete(key);
@@ -153,16 +190,48 @@ export async function recoverUploads(owner: string) {
   for (const upload of pendingUploads.values())
     if (upload.owner === owner) await finishUpload(upload);
 }
-async function finishUpload(
-  upload: PendingUpload,
-): Promise<Pick<Evidence, "fileId" | "path" | "bucket">> {
+function finishUpload(upload: PendingUpload): Promise<Evidence> {
+  // Upload fields on the same case can be active at the same time.
+  const { caseId } = upload;
+  const previous = uploadQueues.get(caseId) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => persistUpload(upload));
+  uploadQueues.set(caseId, next);
+  void next.finally(() => {
+    if (uploadQueues.get(caseId) === next) uploadQueues.delete(caseId);
+  }).catch(() => {});
+  return next;
+}
+async function persistUpload(upload: PendingUpload): Promise<Evidence> {
   const backend = getBackend(),
     session = unwrap(await backend.auth.getSession()).session;
   if (!session || session.user.id !== upload.owner)
     throw new Error(
       "Sign in to keep going. Keep this tab open to retain the selected file.",
     );
-  const { bucket, path, file, caseId, sourceId, kind } = upload;
+  const { bucket, path, file, caseId, sourceId, kind, libraryFileId } = upload;
+  const readRow = async () => {
+    const row = unwrap(await backend.data.getCase(caseId));
+    if (!row)
+      throw new Error("This case is unavailable. Your selected file is retained in this tab.");
+    return row;
+  };
+  const findCopy = (value: RentalCase) => libraryFileId && value.evidence.find(
+    (e) => e.kind === kind && e.libraryFileId === libraryFileId,
+  );
+  const checkCapacity = (value: RentalCase) => {
+    if (value.evidence.length >= 200 && !value.evidence.some((e) => e.id === sourceId))
+      throw new Error("This case already has 200 files. Remove a case attachment to make room.");
+  };
+  if (libraryFileId) {
+    await flushCases();
+    const current = fromRow(await readRow());
+    const existing = findCopy(current);
+    if (existing) {
+      pendingUploads.delete(path);
+      return existing;
+    }
+    checkCapacity(current);
+  }
   // The file bytes are the slow part, so send them while any case saves still
   // queued from autosave finish, instead of waiting for those first. The case
   // row already exists by now, which is all the upload needs.
@@ -171,18 +240,7 @@ async function finishUpload(
     backend.storage.from(bucket).upload(path, file, { upsert: true }),
   ]);
   const metadata = unwrap(stored);
-  const row = unwrap(await backend.data.getCase(caseId));
-  if (!row)
-    throw new Error(
-      "This case is unavailable. Your selected file is retained in this tab.",
-    );
-  const buffered = bufferedCase(caseId, session.user.id);
-  const value =
-    buffered && "charges" in buffered.payload
-      ? structuredClone(buffered.payload)
-      : fromRow(row);
-  value.evidence = value.evidence.filter((e) => e.id !== sourceId);
-  value.evidence.push({
+  const evidence: Evidence = {
     id: sourceId,
     fileId: metadata.id,
     path,
@@ -191,12 +249,35 @@ async function finishUpload(
     name: file.name,
     type: file.type,
     size: file.size,
-  });
-  value.stale = true;
-  value.demo = false;
-  await saveCase(value);
-  pendingUploads.delete(upload.path);
-  return { fileId: metadata.id, path, bucket };
+    ...(libraryFileId ? { libraryFileId } : {}),
+  };
+  for (let attempt = 0; ; attempt++) {
+    const row = await readRow();
+    const persisted = fromRow(row);
+    const existing = findCopy(persisted);
+    if (existing) {
+      if (existing.path !== path) await backend.storage.from(bucket).remove([path]);
+      pendingUploads.delete(path);
+      return existing;
+    }
+    checkCapacity(persisted);
+    const buffered = bufferedCase(caseId, upload.owner);
+    const value = buffered && "charges" in buffered.payload
+      ? structuredClone(buffered.payload)
+      : persisted;
+    checkCapacity(value);
+    value.evidence = [...value.evidence.filter((e) => e.id !== sourceId), evidence];
+    value.stale = true;
+    value.demo = false;
+    try {
+      await saveCase(value, libraryFileId ? { evidence, revision: row.revision } : undefined);
+      pendingUploads.delete(path);
+      return evidence;
+    } catch (error) {
+      if (!libraryFileId || attempt >= 2 || !(error instanceof Error) ||
+          !("code" in error) || error.code !== "conflict") throw error;
+    }
+  }
 }
 export async function getFile(
   caseId: string,
