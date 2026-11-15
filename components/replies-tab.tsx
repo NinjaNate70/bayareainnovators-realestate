@@ -18,20 +18,14 @@ import { FileDrop } from "@/components/file-drop";
 import { SourceChip } from "@/components/evidence";
 import { estimateRecovery } from "@/lib/estimate";
 import { hosted } from "@/lib/backend";
-import { CaseCorrespondence } from "@/components/case-correspondence";
 
-type ReplyProps = { data: RentalCase; onUpdate: (changes: Partial<RentalCase>) => void };
-
-export function RepliesTab(props: ReplyProps) {
-  return hosted && !props.data.demo
-    ? <CaseCorrespondence key={props.data.id} data={props.data} mode="reply" />
-    : <LocalRepliesTab {...props} />;
-}
-
-function LocalRepliesTab({
+export function RepliesTab({
   data,
   onUpdate,
-}: ReplyProps) {
+}: {
+  data: RentalCase;
+  onUpdate: (changes: Partial<RentalCase>) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -49,6 +43,7 @@ function LocalRepliesTab({
     setError("");
     setBusy(true);
     try {
+      // TODO(api): Send the reviewed landlord response and case evidence to the reply service, requiring response/rule/photo citations.
       await Promise.resolve();
       const text = `Dear ${data.landlord || "Property Manager"},\n\nThank you for your response. I understand your message to say:\n“${data.incoming.trim().slice(0, 1000)}${data.incoming.length > 1000 ? "…" : ""}” [R01]\n\nI would like to clarify the deductions for ${data.address}. ${estimate ? `My request concerns ${estimate.included.map((c) => c.name.toLowerCase()).join(", ")}. Please review the supporting records referenced in my earlier letter. [${sourceIds.join(", ")}]` : "Please share the itemized records and supporting evidence for the deductions so I can review them."}\n\nCould you provide the relevant receipts, dates of work, and any move-in and move-out records that support those charges? I am happy to review the evidence together to resolve this fairly.\n\nThank you,\n${data.renter || "[Your name]"}${data.demo ? "\n\nDEMO TEMPLATE: Review all example references before using." : ""}`;
       onUpdate({ reply: text });
