@@ -25,7 +25,6 @@ import {
   saveCase,
 } from "@/lib/cases";
 import { getBackend, hosted } from "@/lib/backend";
-import { fromRow } from "@/lib/db/mapping";
 import { notesUnavailable } from "@/lib/db/supabase";
 import { unwrap } from "@/lib/cases";
 import { plural } from "@/lib/neutral-copy";
@@ -477,32 +476,6 @@ export function CaseWizard() {
               <>
                 {step === 0 && (
                   <div className="stack">
-                    <div className="notice">
-                      <strong>Try the complete demo</strong>
-                      <p>
-                        Use an illustrative six-charge case to explore the full
-                        audit, evidence, and letter flow.
-                      </p>
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          const owned = await getBackend().data.getCase("demo");
-                          if (!owned.data) {
-                            setError(
-                              "The example belongs to the demo account. Sign in with demo@tenantshield.app to explore it.",
-                            );
-                            return;
-                          }
-                          const value = fromRow(owned.data);
-                          value.audited = false;
-                          setData(value);
-                          setManual(false);
-                          setError("");
-                        }}
-                      >
-                        Use example documents
-                      </Button>
-                    </div>
                     <UploadZone
                       title="Landlord’s deduction letter"
                       caseId={data.id}

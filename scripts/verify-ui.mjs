@@ -140,17 +140,10 @@ try {
     await page.goto(`${origin}/case/new`);
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.locator('.notice[role="alert"]').waitFor();
-    await page.getByRole("button", { name: "Use example documents" }).click();
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await page.getByRole("heading", { name: "Confirm the details" }).waitFor();
-    await page.screenshot({
-      path: "output/ui-qa/wizard-mobile.png",
-      fullPage: true,
-    });
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await page.getByRole("button", { name: "Continue to review" }).click();
-    await page.getByRole("button", { name: "Run audit" }).click();
-    await page.locator(".owed-amount").waitFor();
+    assert.equal(
+      await page.getByRole("button", { name: "Use example documents" }).count(),
+      0,
+    );
     await page.goto(origin);
     await page
       .getByRole("heading", { name: /Your deposit deserves/ })
@@ -186,6 +179,11 @@ try {
       .filter({ hasText: "deductions.png" })
       .waitFor();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("heading", { name: "Confirm the details" }).waitFor();
+    await page.screenshot({
+      path: "output/ui-qa/wizard-mobile.png",
+      fullPage: true,
+    });
     await page
       .locator("#address")
       .fill("123 Example Street, San Luis Obispo, CA");

@@ -9,8 +9,7 @@ build check. The design follows UI/UX Pro Max's verified searches recorded in MA
 ## Run and demo
 
 Use Node 24, then `npm ci` and `npm run dev`. Open `/` or go directly to `/case/demo`.
-For a wizard walkthrough, open `/case/new`, choose **Use example documents**, and
-continue through Details, Photos, and Review. Run audit opens the six-charge case.
+To start your own case, open `/case/new` and upload your documents or enter details manually.
 
 The example includes two Fair, two Disputable, one Likely not allowed, and one Need
 more info charge. Its illustrative owed range is $650–$900. All claims have visible
