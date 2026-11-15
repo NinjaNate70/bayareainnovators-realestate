@@ -2544,3 +2544,103 @@ textarea[aria-invalid="true"] {
     background: white;
   }
 }
+
+/* Case assistant */
+.assistant-launch {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(16, 31, 42, 0.22);
+}
+.assistant-launch:hover {
+  background: var(--ink);
+}
+.assistant-launch:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.assistant-log {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.assistant-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.assistant-suggestions .button {
+  justify-content: flex-start;
+  text-align: left;
+}
+.assistant-message {
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  white-space: pre-wrap;
+}
+.assistant-user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--mint);
+}
+.assistant-assistant {
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.assistant-meta {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.assistant-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.assistant-form textarea {
+  flex: 1;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: var(--ink);
+  resize: vertical;
+}
+@media (max-width: 1023px) {
+  /* Sits above the bottom navigation and a page's fixed action bar. */
+  .assistant-launch {
+    right: 16px;
+    bottom: 156px;
+  }
+  .assistant-launch span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .assistant-launch {
+    width: 52px;
+    padding: 0;
+    justify-content: center;
+  }
+}

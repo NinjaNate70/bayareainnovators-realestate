@@ -1,7 +1,7 @@
 'use client';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { comparisonColumns, type SavedComparison } from '@/lib/inspection-comparison';
 import styles from './inspections.module.css';
 
@@ -32,41 +32,42 @@ function ComparisonResult({ result, photoNames }: { result: SavedComparison; pho
   );
 }
 
-export function ComparePhotos({ supabase, roomId, photos, renderPhoto }: {
+type ComparisonInput = { moveInId: string; moveOutId: string; spot: string; region?: string };
+
+async function requestComparison(supabase: SupabaseClient, input: ComparisonInput) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sign in again to compare photos.');
+  const response = await fetch('/api/inspections/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({
+      moveInPhotoId: input.moveInId, moveOutPhotoId: input.moveOutId,
+      spot: input.spot, region: input.region ?? '', consent: true,
+    }),
+  });
+  const result: { comparison?: SavedComparison; error?: string } = await response.json().catch(() => ({}));
+  if (!response.ok || !result.comparison) throw new Error(result.error ?? 'Could not complete the comparison. Try again.');
+  return result.comparison;
+}
+
+export function ComparePhotos({ supabase, roomId, roomName, auto, photos, renderPhoto }: {
   supabase: SupabaseClient;
   roomId: string;
+  roomName: string;
+  // The renter chose to have each room's newest pair analysed without asking each time.
+  auto: boolean;
   photos: PhotoChoice[];
   renderPhoto: (id: string) => ReactNode;
 }) {
   const moveIn = photos.filter((photo) => photo.phase === 'move_in');
   const moveOut = photos.filter((photo) => photo.phase === 'move_out');
   const [open, setOpen] = useState(false);
-
-  if (!moveIn.length || !moveOut.length) return null;
-  return (
-    <div className={styles.comparison}>
-      <button type="button" className={styles.secondary} aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? 'Hide comparisons' : 'Compare photos'}
-      </button>
-      {open && <ComparisonForm supabase={supabase} roomId={roomId} moveIn={moveIn} moveOut={moveOut} renderPhoto={renderPhoto} />}
-    </div>
-  );
-}
-
-function ComparisonForm({ supabase, roomId, moveIn, moveOut, renderPhoto }: {
-  supabase: SupabaseClient;
-  roomId: string;
-  moveIn: PhotoChoice[];
-  moveOut: PhotoChoice[];
-  renderPhoto: (id: string) => ReactNode;
-}) {
-  const [moveInId, setMoveInId] = useState(moveIn[0].id);
-  const [moveOutId, setMoveOutId] = useState(moveOut[0].id);
   const [results, setResults] = useState<SavedComparison[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState(false);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoError, setAutoError] = useState('');
+  const attempted = useRef(new Set<string>());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -81,6 +82,75 @@ function ComparisonForm({ supabase, roomId, moveIn, moveOut, renderPhoto }: {
     return () => controller.abort();
   }, [supabase, roomId]);
 
+  const saveResult = useCallback((saved: SavedComparison) => {
+    setResults((current) => [saved, ...current.filter(({ id }) => id !== saved.id)]);
+  }, []);
+
+  // Photos arrive newest first, so the first of each phase is the latest pair.
+  const newestIn = moveIn[0]?.id;
+  const newestOut = moveOut[0]?.id;
+  const newestResult = results.find((result) => result.move_in_photo_id === newestIn && result.move_out_photo_id === newestOut);
+  const hasNewestResult = Boolean(newestResult);
+
+  const analyse = useCallback(async (moveInId: string, moveOutId: string) => {
+    setAutoBusy(true);
+    setAutoError('');
+    try {
+      saveResult(await requestComparison(supabase, { moveInId, moveOutId, spot: roomName.trim().slice(0, 120) || 'Room' }));
+    } catch (cause) {
+      setAutoError(cause instanceof Error ? cause.message : 'Could not analyse the photos.');
+    } finally {
+      setAutoBusy(false);
+    }
+  }, [supabase, roomName, saveResult]);
+
+  useEffect(() => {
+    if (!auto || historyLoading || historyError || hasNewestResult || !newestIn || !newestOut) return;
+    const pair = `${newestIn}/${newestOut}`;
+    // One automatic attempt per pair; a failure waits for the renter to retry.
+    if (attempted.current.has(pair)) return;
+    attempted.current.add(pair);
+    queueMicrotask(() => void analyse(newestIn, newestOut));
+  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, analyse]);
+
+  if (!moveIn.length || !moveOut.length) return null;
+  const names = new Map(photos.map(({ id, original_name }) => [id, original_name]));
+  return (
+    <div className={styles.comparison}>
+      {autoBusy && <p role="status">Gemini is analysing the newest move-in and move-out photos for this room…</p>}
+      {autoError && !autoBusy && (
+        <p role="alert" className={styles.error}>
+          Automatic analysis didn’t finish: {autoError}{' '}
+          <button type="button" className={styles.secondary} onClick={() => void analyse(newestIn!, newestOut!)}>Try again</button>
+        </p>
+      )}
+      {newestResult && !open && <div role="status"><ComparisonResult result={newestResult} photoNames={names} /></div>}
+      <button type="button" className={styles.secondary} aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide comparisons' : newestResult ? 'Compare other photos' : 'Compare photos'}
+      </button>
+      {open && (
+        <ComparisonForm supabase={supabase} moveIn={moveIn} moveOut={moveOut} renderPhoto={renderPhoto}
+          results={results} historyLoading={historyLoading || autoBusy} historyError={historyError} onSaved={saveResult} />
+      )}
+    </div>
+  );
+}
+
+function ComparisonForm({ supabase, moveIn, moveOut, renderPhoto, results, historyLoading, historyError, onSaved }: {
+  supabase: SupabaseClient;
+  moveIn: PhotoChoice[];
+  moveOut: PhotoChoice[];
+  renderPhoto: (id: string) => ReactNode;
+  results: SavedComparison[];
+  historyLoading: boolean;
+  historyError: boolean;
+  onSaved: (saved: SavedComparison) => void;
+}) {
+  const [moveInId, setMoveInId] = useState(moveIn[0].id);
+  const [moveOutId, setMoveOutId] = useState(moveOut[0].id);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
   const selectedResult = results.find((result) => result.move_in_photo_id === moveInId && result.move_out_photo_id === moveOutId);
   const previousResults = results.filter((result) => result.id !== selectedResult?.id);
   const names = new Map([...moveIn, ...moveOut].map(({ id, original_name }) => [id, original_name]));
@@ -89,23 +159,13 @@ function ComparisonForm({ supabase, roomId, moveIn, moveOut, renderPhoto }: {
     event.preventDefault();
     if (busy || selectedResult) return;
     const form = new FormData(event.currentTarget);
+    if (form.get('consent') !== 'on') return;
     setBusy(true);
     setError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Sign in again to compare photos.');
-      const response = await fetch('/api/inspections/compare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          moveInPhotoId: moveInId, moveOutPhotoId: moveOutId,
-          spot: form.get('spot'), region: form.get('region'), consent: form.get('consent') === 'on',
-        }),
-      });
-      const result: { comparison?: SavedComparison; error?: string } = await response.json().catch(() => ({}));
-      if (!response.ok || !result.comparison) throw new Error(result.error ?? 'Could not complete the comparison. Try again.');
-      const saved = result.comparison;
-      setResults((current) => [saved, ...current.filter(({ id }) => id !== saved.id)]);
+      onSaved(await requestComparison(supabase, {
+        moveInId, moveOutId, spot: String(form.get('spot') ?? ''), region: String(form.get('region') ?? ''),
+      }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not compare the photos.');
     } finally {

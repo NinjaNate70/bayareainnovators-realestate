@@ -269,7 +269,7 @@ export function CaseWizard() {
   const removeFile = (id: string) =>
     patch({ evidence: data.evidence.filter((e) => e.id !== id), demo: false });
   return (
-    <Shell>
+    <Shell draftCaseId={data.id}>
       <div className="page-heading">
         <div>
           <p className="eyebrow">A CLEARER NEXT STEP</p>
