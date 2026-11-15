@@ -98,6 +98,15 @@ The wizard then opens the Details step with those filled in and asks the renter 
 
 It uses the same key as the audit (`ANTHROPIC_API_KEY`, with `GEMINI_API_KEY` as an optional stand-in), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
 
+## My documents
+
+**Documents** in the workspace navigation opens `/documents`, one place for everything a renter has uploaded.
+
+- **Saved documents** are files kept outside any case: leases, receipts, letters, photos. The renter can add several at once (PDF, JPG or PNG, up to 10 MB each), open one through a private link that expires after five minutes, or delete it. These files are not read by the audit or the assistant.
+- **From your cases** lists every file attached to a case, with a link to that case.
+
+Run the [document library migration](supabase/migrations/20261115000300_document_library.sql) once in the Supabase SQL Editor. It creates the private `library` bucket and a policy that limits each renter to files under their own user id. Until then the page shows the case files and says the library isn't set up. Deleting an account removes its library files too. Saving documents outside a case needs `NEXT_PUBLIC_BACKEND=supabase`; the browser-only demo lists case files only.
+
 ## Let renters explain their situation
 
 The wizard's Details step ends with a text box, **Anything else about your situation?**, for what the documents don't show: roommates and who paid the deposit, anything agreed with the landlord, repairs requested, the condition at move-in. It holds up to 4,000 characters and appears again on the Review step.
