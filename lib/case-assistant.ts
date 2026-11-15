@@ -1,7 +1,9 @@
 // Case assistant: a small multi-agent system that walks a renter through their
 // deposit case. Gemini answers as one of four specialists, and a second model
-// family (OpenAI) reviews the draft before the renter sees it. The time limits
-// below keep a whole answer inside the server's 60-second limit.
+// family (OpenAI) reviews the draft before the renter sees it. Each covers for
+// the other: if Gemini is overloaded OpenAI drafts, and if OpenAI is down Gemini
+// reviews. The time limits below keep a whole answer, fallbacks included, inside
+// the server's 60-second limit.
 //
 // Everything here runs on the server. The file has no local imports so the
 // unit tests can load it directly.
@@ -221,27 +223,44 @@ function conversation(request: AssistantRequest) {
 // ---------------------------------------------------------------------------
 // Providers
 
-async function callGemini(options: { apiKey: string; model: string; system: string; user: string; schema: Json; fetch: Fetch; timeout: number }) {
-  const response = await options.fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'x-goog-api-key': options.apiKey, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(options.timeout),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: options.system }] },
-        contents: [{ role: 'user', parts: [{ text: options.user }] }],
-        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(`Gemini request failed (${response.status}).`);
-  const result: { candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[] } = await response.json();
-  const candidate = result.candidates?.[0];
-  const text = candidate?.content?.parts?.filter(({ thought }) => !thought).map((part) => part.text ?? '').join('');
-  if (candidate?.finishReason !== 'STOP' || !text) throw new Error('Gemini did not return a complete answer.');
-  return JSON.parse(text) as Json;
+// Gemini answers 429 or a 5xx when a model is briefly overloaded. Within the
+// call's time limit it gets one more try before the caller falls back.
+const busy = [429, 500, 502, 503, 504];
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const outOfTime = () => Object.assign(new Error('The AI service took too long.'), { name: 'TimeoutError' });
+
+async function callGemini(options: { apiKey: string; model: string; system: string; user: string; schema: Json; fetch: Fetch; timeout: number; retryDelay?: number }) {
+  const until = Date.now() + options.timeout;
+  for (let attempt = 0; ; attempt += 1) {
+    const left = until - Date.now();
+    if (left < 1500) throw outOfTime();
+    const response = await options.fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'x-goog-api-key': options.apiKey, 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(left),
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: options.system }] },
+          contents: [{ role: 'user', parts: [{ text: options.user }] }],
+          generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema },
+        }),
+      },
+    );
+    if (!response.ok) {
+      if (attempt === 0 && busy.includes(response.status) && until - Date.now() > 5000) {
+        await pause(options.retryDelay ?? 1200);
+        continue;
+      }
+      throw new Error(`Gemini request failed (${response.status}).`);
+    }
+    const result: { candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[] } = await response.json();
+    const candidate = result.candidates?.[0];
+    const text = candidate?.content?.parts?.filter(({ thought }) => !thought).map((part) => part.text ?? '').join('');
+    if (candidate?.finishReason !== 'STOP' || !text) throw new Error('Gemini did not return a complete answer.');
+    return JSON.parse(text) as Json;
+  }
 }
 
 async function callOpenAi(options: { apiKey: string; model: string; system: string; user: string; fetch: Fetch; timeout: number }) {
@@ -314,6 +333,8 @@ export async function runAssistant(options: {
   openAiKey?: string;
   openAiModel: string;
   fetch?: Fetch;
+  // Pause before retrying a busy Gemini model. Tests set it to 0.
+  retryDelay?: number;
 }): Promise<AssistantReply> {
   const { request, geminiKey, geminiModel, openAiKey, openAiModel } = options;
   const call = options.fetch ?? fetch;
@@ -327,26 +348,37 @@ export async function runAssistant(options: {
   // 1. Specialist: one Gemini call picks the specialist that fits the question
   // and answers as that specialist. Routing and drafting share a call so the
   // renter is not kept waiting for a separate routing round-trip.
-  const drafted = await callGemini({
-    apiKey: geminiKey, model: geminiModel, fetch: call, timeout: 28_000,
-    system: [
+  const draftSystem = [
       ground,
       'First choose the one specialist that fits the question and return its name as "agent". Then answer as that specialist. If unsure, choose steps.',
       ...agents.map((name) => `${name}: ${specialists[name]}`),
       appGuide,
       `Numbered guide (${guideSource.publisher}):\n${guideText}`,
-    ].join('\n\n'),
-    user: context,
-    schema: {
-      type: 'object',
-      properties: {
-        agent: { type: 'string', enum: [...agents] },
-        answer: { type: 'string' },
-        guide_sections: { type: 'array', items: { type: 'string', enum: guideIds } },
+  ].join('\n\n');
+  let drafted: Json;
+  try {
+    drafted = await callGemini({
+      apiKey: geminiKey, model: geminiModel, fetch: call, timeout: 20_000, retryDelay: options.retryDelay,
+      system: draftSystem,
+      user: context,
+      schema: {
+        type: 'object',
+        properties: {
+          agent: { type: 'string', enum: [...agents] },
+          answer: { type: 'string' },
+          guide_sections: { type: 'array', items: { type: 'string', enum: guideIds } },
+        },
+        required: ['agent', 'answer', 'guide_sections'],
       },
-      required: ['agent', 'answer', 'guide_sections'],
-    },
-  });
+    });
+  } catch (error) {
+    // Gemini is down or overloaded: OpenAI drafts with the same instructions.
+    if (!openAiKey) throw error;
+    drafted = await callOpenAi({
+      apiKey: openAiKey, model: openAiModel, fetch: call, timeout: 12_000, user: context,
+      system: `${draftSystem}\n\nReturn JSON with: agent (one of ${agents.join(', ')}), answer (string), guide_sections (array of guide ids).`,
+    }).catch(() => { throw error; });
+  }
   const route = normalizeRoute(drafted);
   const draft = normalizeDraft(drafted);
 
@@ -364,12 +396,12 @@ export async function runAssistant(options: {
   let verdict: Json;
   try {
     if (!openAiKey) throw new Error('OpenAI is not configured.');
-    verdict = await callOpenAi({ apiKey: openAiKey, model: openAiModel, system: reviewSystem, user: reviewUser, fetch: call, timeout: 14_000 });
+    verdict = await callOpenAi({ apiKey: openAiKey, model: openAiModel, system: reviewSystem, user: reviewUser, fetch: call, timeout: 12_000 });
   } catch {
     // Every answer is reviewed. If OpenAI is unavailable, Gemini reviews with the same instructions.
     reviewedBy = 'gemini';
     verdict = await callGemini({
-      apiKey: geminiKey, model: geminiModel, fetch: call, timeout: 12_000, system: reviewSystem, user: reviewUser,
+      apiKey: geminiKey, model: geminiModel, fetch: call, timeout: 10_000, retryDelay: options.retryDelay, system: reviewSystem, user: reviewUser,
       schema: {
         type: 'object',
         properties: {
