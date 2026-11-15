@@ -24,6 +24,7 @@ const suggestions = [
   "What should I do next?",
   "What evidence am I missing?",
   "How long does my landlord have to return my deposit?",
+  "How does my situation affect my case?",
 ];
 
 // A chat panel on the case screens. Each answer comes from one specialist
