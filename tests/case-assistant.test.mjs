@@ -163,7 +163,31 @@ test('a busy Gemini model is retried, then OpenAI drafts and reviews', async () 
   assert.match(openAiPrompts[1], /independent reviewer/);
 });
 
-test('with both services down the error names Gemini', async () => {
-  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }))), /Gemini request failed \(503\)/);
+test('with both services down the error names each one', async () => {
+  await assert.rejects(runAssistant(options(async (url) => new Response('down', { status: String(url).includes('openai.com') ? 429 : 503 }))),
+    { name: 'AiServiceError', message: 'Gemini request failed (503); OpenAI request failed (429).' });
+  // OpenAI drafted, then the review failed on both.
+  let n = 0;
+  await assert.rejects(runAssistant(options(async (url) => {
+    if (!String(url).includes('openai.com')) return new Response('down', { status: 503 });
+    n += 1;
+    return n === 1 ? openai({ agent: 'steps', answer: 'Draft.', guide_sections: [] }) : new Response('no credit', { status: 429 });
+  })), { message: 'OpenAI request failed (429); Gemini request failed (503).' });
   await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }), { openAiKey: undefined })), /Gemini request failed \(503\)/);
+});
+
+test('asks Gemini for light thinking, and drops the setting for a model that rejects it', async () => {
+  const sent = [];
+  const fetch = async (url, init) => {
+    if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: [], note: '' });
+    const config = JSON.parse(init.body).generationConfig;
+    sent.push(config.thinkingConfig?.thinkingLevel ?? 'none');
+    if (config.thinkingConfig) return new Response('unknown field', { status: 400 });
+    return gemini({ agent: 'steps', answer: 'Ok.', guide_sections: [] });
+  };
+  const model = { geminiModel: 'gemini-no-levels' };
+  assert.equal((await runAssistant(options(fetch, model))).reply, 'Ok.');
+  assert.equal((await runAssistant(options(fetch, model))).reply, 'Ok.');
+  // Tried once, then remembered for that model.
+  assert.deepEqual(sent, ['low', 'none', 'none']);
 });

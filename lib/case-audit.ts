@@ -85,11 +85,26 @@ const busy = [429, 500, 502, 503, 504];
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const outOfTime = () => Object.assign(new Error('The AI service took too long.'), { name: 'TimeoutError' });
 
+// Flash models think before answering by default, which can take longer than
+// these requests are allowed. Ask for light thinking; a model that does not
+// accept the setting answers 400 once and is then called without it.
+const plainModels = new Set<string>();
+
+// One line naming each service that failed and how, for the error the renter
+// and the server log see. Built only from our own messages: no response text.
+const outcome = (service: string, error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError'
+    ? `${service} took too long`
+    : error instanceof Error && error.message.startsWith(service) ? error.message.replace(/\.$/, '') : `${service} failed`;
+const bothFailed = (first: string, a: unknown, second: string, b: unknown) =>
+  Object.assign(new Error(`${outcome(first, a)}; ${outcome(second, b)}.`), { name: 'AiServiceError' });
+
 async function callGemini(options: { apiKey: string; model: string; system: string; parts: GeminiPart[]; schema: Json; fetch: Fetch; timeout: number; retryDelay?: number }) {
   const until = Date.now() + options.timeout;
   for (let attempt = 0; ; attempt += 1) {
     const left = until - Date.now();
     if (left < 1500) throw outOfTime();
+    const light = !plainModels.has(options.model);
     const response = await options.fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`,
       {
@@ -100,11 +115,16 @@ async function callGemini(options: { apiKey: string; model: string; system: stri
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: options.system }] },
           contents: [{ role: 'user', parts: options.parts }],
-          generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema },
+          generationConfig: { responseMimeType: 'application/json', responseJsonSchema: options.schema, ...(light ? { thinkingConfig: { thinkingLevel: 'low' } } : {}) },
         }),
       },
     );
     if (!response.ok) {
+      if (response.status === 400 && light) {
+        plainModels.add(options.model);
+        attempt -= 1;
+        continue;
+      }
       if (attempt === 0 && busy.includes(response.status) && until - Date.now() > 5000) {
         await pause(options.retryDelay ?? 1200);
         continue;
@@ -382,7 +402,7 @@ export async function runCaseAudit(options: Keys & { input: AuditInput; guide: G
       apiKey: options.openAiKey, model: options.openAiModel, fetch: call, timeout: 10_000,
       system: `${auditorSystem(guide)}\nReturn JSON with: charges (array of { charge_id, status, reason, evidence_ids, guide_sections, requests }).`,
       parts: [{ type: 'text', text: context }],
-    }).catch(() => { throw error; });
+    }).catch((second) => { throw bothFailed('Gemini', error, 'OpenAI', second); });
   }
 
   // Evidence the auditor may cite: only files whose reader actually ran.
