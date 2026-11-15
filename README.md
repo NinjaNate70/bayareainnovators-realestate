@@ -119,6 +119,10 @@ The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`.
 
 If Gemini is overloaded (it answers `503` or `429`), the app retries once and then lets OpenAI draft the answer, examine the photos or run the audit instead. If OpenAI is down, Gemini covers its jobs. With both keys set, one provider having a bad moment doesn't stop the audit or the assistant.
 
+### If answers don't come through
+
+Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and OpenAI: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
+
 An answer usually takes 10 to 30 seconds. If a model fails or is too slow, the message names the service and status, such as `Gemini request failed (404)`, which points to a wrong model name or key.
 
 California rules come only from the [California Courts guide to security deposits](https://selfhelp.courts.ca.gov/guide-security-deposits-california), stored as numbered sections in `lib/case-assistant.ts`. The assistant is told to say so when the guide doesn't cover a question, and each answer lists the sections it relied on. Update those sections when the guide changes. The assistant gives information, not legal advice.
