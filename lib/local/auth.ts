@@ -229,6 +229,7 @@ export const localAuth: AuthClient = {
         fail("name", "Enter your name using no more than 100 characters.");
       if (
         !input.options.data.terms_version ||
+        !input.options.data.terms_accepted_at ||
         !input.options.data.privacy_version ||
         !input.options.data.consented_at
       )
@@ -255,6 +256,7 @@ export const localAuth: AuthClient = {
           created_at: now(),
           updated_at: now(),
           terms_version: input.options.data.terms_version,
+          terms_accepted_at: input.options.data.terms_accepted_at,
           privacy_version: input.options.data.privacy_version,
           consented_at: input.options.data.consented_at,
         };

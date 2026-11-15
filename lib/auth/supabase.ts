@@ -205,7 +205,12 @@ export const supabaseAuth: AuthClient = {
       if (error) fail("password", error);
       if (!name || name.length > 100)
         fail("name", "Enter your name using no more than 100 characters.");
-      if (!data.terms_version || !data.privacy_version || !data.consented_at)
+      if (
+        !data.terms_version ||
+        !data.terms_accepted_at ||
+        !data.privacy_version ||
+        !data.consented_at
+      )
         fail(
           "consent",
           "Agree to the Terms and Privacy to create your account.",

@@ -19,6 +19,7 @@ export interface UserRow {
   updated_at: string;
   pending_email?: string;
   terms_version: string;
+  terms_accepted_at?: string;
   privacy_version: string;
   consented_at: string;
 }

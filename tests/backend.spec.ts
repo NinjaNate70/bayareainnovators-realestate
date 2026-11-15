@@ -192,6 +192,7 @@ test("verification and reset tokens are single-use; typed deletion is scoped", a
       data: {
         name: "New renter",
         terms_version: "draft",
+        terms_accepted_at: now(),
         privacy_version: "draft",
         consented_at: now(),
       },

@@ -16,6 +16,7 @@ import { getBackend } from "@/lib/backend";
 import { passwordError, safeReturnTo, validEmail } from "@/lib/auth/validation";
 import { useAuth } from "./provider";
 import { recoveryDestination } from "@/lib/auth/drafts";
+import { TERMS_VERSION } from "@/lib/auth/terms";
 export function Signup() {
   const router = useRouter(),
     search = useSearchParams(),
@@ -33,9 +34,7 @@ export function Signup() {
         : "",
     password: passwordError(v.password ?? ""),
     consent:
-      v.consent !== "yes"
-        ? "Agree to the Terms and Privacy Policy to continue."
-        : "",
+      v.consent !== "yes" ? "Agree to the Terms of Service to continue." : "",
   }));
   useEffect(() => {
     const flow = search.get("change");
@@ -57,15 +56,17 @@ export function Signup() {
         .catch((e) => form.setError(e.message));
   }, [session, search, router]); // eslint-disable-line react-hooks/exhaustive-deps
   async function signup() {
+    const acceptedAt = new Date().toISOString();
     const r = await getBackend().auth.signUp({
       email: form.values.email,
       password: form.values.password,
       options: {
         data: {
           name: form.values.name,
-          terms_version: "review-draft-v1",
+          terms_version: TERMS_VERSION,
+          terms_accepted_at: acceptedAt,
           privacy_version: "review-draft-v1",
-          consented_at: new Date().toISOString(),
+          consented_at: acceptedAt,
         },
         emailRedirectTo: safeReturnTo(search.get("returnTo")) ?? undefined,
       },
@@ -143,12 +144,16 @@ export function Signup() {
                 form.errors.consent ? "consent-error" : "policy-review"
               }
             />
-            <span>I agree to the Terms and Privacy Policy.</span>
+            <span>
+              I agree to the{" "}
+              <Link href="/terms" target="_blank" rel="noreferrer">
+                Terms of Service
+              </Link>
+              , including a 10% success fee (max $75) only if Tenant Shield
+              helps me recover money.
+            </span>
           </label>
           <div className="auth-policy-links">
-            <Link href="/terms" target="_blank" rel="noreferrer">
-              Read Terms
-            </Link>
             <Link href="/privacy" target="_blank" rel="noreferrer">
               Read Privacy Policy
             </Link>
@@ -166,7 +171,7 @@ export function Signup() {
           busy={form.busy}
           wait={form.wait}
           loading="Creating account…"
-          disabled={state === "loading"}
+          disabled={state === "loading" || form.values.consent !== "yes"}
         >
           Create account <ArrowRight size={18} aria-hidden="true" />
         </SubmitButton>

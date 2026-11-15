@@ -40,6 +40,7 @@ export interface SignUpInput {
     data: {
       name: string;
       terms_version: string;
+      terms_accepted_at: string;
       privacy_version: string;
       consented_at: string;
     };

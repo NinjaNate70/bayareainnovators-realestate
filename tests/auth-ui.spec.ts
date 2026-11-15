@@ -9,6 +9,8 @@ declare global {
 }
 test.setTimeout(120_000);
 const password = "A calm tenant passphrase";
+const termsLabel =
+  "I agree to the Terms of Service, including a 10% success fee (max $75) only if Tenant Shield helps me recover money.";
 const photo = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -18,7 +20,7 @@ async function signup(page: Page, email: string, name = "Test Renter") {
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByLabel("I agree to the Terms and Privacy Policy.").check();
+  await page.getByLabel(termsLabel, { exact: true }).check();
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
@@ -279,6 +281,35 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+test("Create account stays disabled until the terms are accepted", async ({
+  page,
+}) => {
+  await page.goto("/signup");
+  await page.getByLabel("Name", { exact: true }).fill("Terms Renter");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill(`terms-${Date.now()}@example.test`);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  const submit = page.getByRole("button", {
+    name: "Create account",
+    exact: true,
+  });
+  const terms = page.getByLabel(termsLabel, { exact: true });
+  await expect(terms).not.toBeChecked();
+  await expect(submit).toBeDisabled();
+  await terms.check();
+  await expect(submit).toBeEnabled();
+  await terms.uncheck();
+  await expect(submit).toBeDisabled();
+  await terms.blur();
+  await expect(terms).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    page.getByText("Fix this: Agree to the Terms of Service to continue."),
+  ).toBeVisible();
+  const link = page.getByRole("link", { name: "Terms of Service" });
+  await expect(link).toHaveAttribute("href", "/terms");
+  await expect(link).toHaveAttribute("target", "_blank");
 });
 test("forgot/reset flow and invalid-link state", async ({ page }) => {
   const email = `reset-${Date.now()}@example.test`;
