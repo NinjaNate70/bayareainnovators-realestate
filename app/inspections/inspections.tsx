@@ -202,6 +202,18 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const galleryRequest = useRef(0);
+  // Sending photos to Gemini without asking each time is the renter's choice, kept per account in this browser.
+  const autoKey = `tenant-shield:auto-analysis:${userId}`;
+  const [auto, setAuto] = useState(() => {
+    try { return localStorage.getItem(autoKey) === 'on'; } catch { return false; }
+  });
+  function chooseAuto(on: boolean) {
+    setAuto(on);
+    try {
+      if (on) localStorage.setItem(autoKey, 'on');
+      else localStorage.removeItem(autoKey);
+    } catch { /* The choice still applies until the page is closed. */ }
+  }
 
   const loadGallery = useCallback(async () => {
     const request = ++galleryRequest.current;
@@ -277,6 +289,10 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
           <h2>Inspection photos</h2>
           <button type="button" className={styles.secondary} onClick={loadGallery}>Refresh photos</button>
         </div>
+        <label className={styles.comparisonConsent}>
+          <input type="checkbox" checked={auto} onChange={(event) => chooseAuto(event.target.checked)} />
+          <span>Analyse photos automatically. When a room has a move-in and a move-out photo, I agree to send the newest pair to Google Gemini and show the result here.</span>
+        </label>
         {!loaded && <p role="status">Loading photos…</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         {loaded && !error && gallery.rooms.length === 0 && <p>Add a room to start taking photos.</p>}
@@ -299,7 +315,7 @@ function LeaseInspection({ supabase, leaseId, userId }: { supabase: SupabaseClie
                 </div>
               ))}
             </div>
-            <ComparePhotos supabase={supabase} roomId={room.id} photos={room.inspection_photos} renderPhoto={(id) => {
+            <ComparePhotos supabase={supabase} roomId={room.id} roomName={room.name} auto={auto} photos={room.inspection_photos} renderPhoto={(id) => {
               const photo = room.inspection_photos.find((item) => item.id === id);
               return photo ? <PhotoPreview key={`${id}/${gallery.urls[photo.storage_path]}`} url={gallery.urls[photo.storage_path]} photo={photo} /> : null;
             }} />

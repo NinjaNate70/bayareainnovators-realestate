@@ -82,9 +82,60 @@ Uploads go directly to Supabase. The app keeps the original file and supports JP
 
 The app reuses the saved result for the same two photo IDs, including the spot and price snapshot submitted with that pair. For pairs too large for the inline Gemini request, the API uploads temporary files to Gemini and requests deletion after processing. Google expires undeleted API files automatically. [Gemini Files API](https://ai.google.dev/gemini-api/docs/files)
 
+### Analyse photos automatically
+
+Tick **Analyse photos automatically** above the inspection photos to skip the manual steps. Whenever a room has both a move-in and a move-out photo, the app sends that room's newest pair to Gemini and shows the result under the room, using the room name as the spot. It runs once per pair, so a saved result is reused instead of sent again, and a failed attempt waits for **Try again**. The choice is off by default because it sends photos to Google, and it is remembered per account in that browser. **Compare other photos** still opens the manual form for older photos or a pricing region.
+
 ### Set up repair price ranges
 
 Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region such as `san luis obispo, ca`, a stable code such as `patch_small_drywall_hole`, a short repair title, a low and high amount in cents, a three-letter currency code, a pricing unit, the source, and the effective date. Use currencies with two decimal places. The optional pricing region on the comparison form must match the catalog region. If there is no matching entry, the app saves the repair assessment and shows that a price is unavailable. A comparison keeps a snapshot of the price shown at the time it ran.
+
+## Run the charge-by-charge audit
+
+With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same keys as the case assistant.
+
+1. A **document reader** (OpenAI) reads the deduction letter and lease: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, and lease terms about the deposit. If OpenAI is unavailable, Gemini reads them.
+2. A **photo analyst** (Gemini) looks at the move-in and move-out photos and reports what is visible for each charge. Steps 1 and 2 run together.
+3. An **auditor** (Gemini) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide.
+
+Each charge gets a status (Fair, Disputable, Likely not allowed, or Need more info), a plain explanation, the evidence files and guide sections behind it, and a list of what to add or check. The app then checks the auditor's answer in code. A finding with no evidence file behind it, or a finding against the landlord with no guide section, is changed to **Need more info**. The dollar range in **You may be owed** comes from the charge amounts: a disputable charge counts from $0 up to its amount, and a likely-not-allowed charge counts in full. The models never supply an amount.
+
+Limits to know about:
+
+- One audit reviews up to 4 documents and 8 photos, about 12 MB of each. Larger sets are trimmed, and the charge's request list names any file that was left out. Phone photos are often several megabytes, so only a few may fit.
+- Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
+- The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
+- If `GEMINI_API_KEY` is missing, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
+- The letter, lease, photos and case details are sent to OpenAI and Google. The Review step says so before the renter runs it.
+
+The result is information to help a renter organise their case, not legal advice.
+
+## Enable the case assistant
+
+The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents from two providers:
+
+1. A **specialist** (Gemini) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
+2. A **reviewer** (OpenAI) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+
+If Gemini is overloaded (it answers `503` or `429`), the app retries once and then lets OpenAI draft the answer, examine the photos or run the audit instead. If OpenAI is down, Gemini covers its jobs. With both keys set, one provider having a bad moment doesn't stop the audit or the assistant.
+
+### If answers don't come through
+
+Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and OpenAI: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
+
+An answer usually takes 10 to 30 seconds. If a model fails or is too slow, the message names the service and status, such as `Gemini request failed (404)`, which points to a wrong model name or key.
+
+California rules come only from the [California Courts guide to security deposits](https://selfhelp.courts.ca.gov/guide-security-deposits-california), stored as numbered sections in `lib/case-assistant.ts`. The assistant is told to say so when the guide doesn't cover a question, and each answer lists the sections it relied on. Update those sections when the guide changes. The assistant gives information, not legal advice.
+
+Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
+
+| Variable | Value |
+|---|---|
+| `GEMINI_API_KEY` | The same Google AI Studio key used for Compare photos |
+| `OPENAI_API_KEY` | A key from the [OpenAI platform](https://platform.openai.com/api-keys). Without it, Gemini reviews its own drafts. |
+| `OPENAI_MODEL` (optional) | A chat model your OpenAI account can use. The default is `gpt-4o-mini`. |
+
+The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Google and OpenAI for each answer; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
 ## Run a live move-out audit
 

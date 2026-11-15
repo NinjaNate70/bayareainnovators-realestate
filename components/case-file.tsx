@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   ChargeDetails,
+  ChargeRequests,
   SourceChip,
   VerdictChip,
   verdicts,
@@ -205,6 +206,7 @@ export function AuditTab({ data }: { data: RentalCase }) {
         verdict: "info" as const,
         low: 0,
         high: 0,
+        requests: undefined,
         reason:
           "Evidence changed. Review the updated case before relying on the earlier finding.",
       }))
@@ -314,6 +316,7 @@ export function AuditTab({ data }: { data: RentalCase }) {
             </div>
             <VerdictChip verdict={charge.verdict} />
             <p>{charge.reason}</p>
+            <ChargeRequests charge={charge} />
             <div className="charge-bottom">
               <div className="source-list">
                 {charge.sources.map((source) => (

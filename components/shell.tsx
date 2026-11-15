@@ -18,15 +18,19 @@ import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/auth/account-menu";
 import { useAuth } from "@/components/auth/provider";
+import { CaseAssistant } from "@/components/case-assistant";
 
 export function Shell({
   children,
   caseId,
   tab = "audit",
+  draftCaseId,
 }: {
   children: ReactNode;
   caseId?: string;
   tab?: CaseTab;
+  // The case being built in the wizard, so the assistant can read it.
+  draftCaseId?: string;
 }) {
   const path = usePathname();
   const { session } = useAuth();
@@ -150,6 +154,12 @@ export function Shell({
         <main id="main" tabIndex={-1} className="page-content" key={path}>
           {children}
         </main>
+        {session && (
+          <CaseAssistant
+            caseId={caseId ?? draftCaseId}
+            page={caseId ? tab : draftCaseId ? "wizard" : "other"}
+          />
+        )}
         <footer className="app-footer">
           <span>Tenant Shield · Bay Innovations</span>
           <span>Information, not legal advice.</span>
