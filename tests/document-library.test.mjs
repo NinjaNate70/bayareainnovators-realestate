@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { displayName, fileSize, libraryFileError, libraryFolder, storedName } from '../lib/document-library.ts';
+import { displayName, fileSize, libraryAccept, libraryFileError, libraryFolder, libraryType, libraryTypes, storedName, uploadProblem, viewable } from '../lib/document-library.ts';
 
 test('files are stored under the renter’s own folder with a unique, safe name', () => {
   const id = 'df2d7dbd-1b1d-4f0e-bf9b-5f4a90f87d01';
@@ -20,14 +20,47 @@ test('the original name is shown again', () => {
   assert.equal(displayName('no-prefix.pdf'), 'no-prefix.pdf');
 });
 
-test('only PDFs and photos up to 10MB are accepted', () => {
-  const file = (type, size) => ({ name: 'file', type, size });
-  assert.equal(libraryFileError(file('application/pdf', 1000)), '');
-  assert.equal(libraryFileError(file('image/jpeg', 10 * 1024 * 1024)), '');
-  assert.match(libraryFileError(file('image/png', 10 * 1024 * 1024 + 1)), /larger than 10MB/);
-  assert.match(libraryFileError(file('application/zip', 10)), /isn’t a PDF, JPG or PNG/);
-  assert.match(libraryFileError(file('text/html', 10)), /isn’t a PDF, JPG or PNG/);
-  assert.match(libraryFileError(file('application/pdf', 0)), /is empty/);
+test('documents, spreadsheets and photos up to 20MB are accepted; web pages and archives are not', () => {
+  const file = (name, type, size = 1000) => ({ name, type, size });
+  for (const [name, type] of [['a.pdf', 'application/pdf'], ['a.JPG', 'image/jpeg'], ['a.png', 'image/png'], ['a.webp', 'image/webp'], ['a.txt', 'text/plain'],
+    ['a.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], ['a.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']]) {
+    assert.equal(libraryFileError(file(name, type)), '', name);
+    assert.equal(libraryType(file(name, type)), type, name);
+  }
+  // Browsers often give no type, or a generic one, for these; the extension decides.
+  assert.equal(libraryType(file('IMG_0042.HEIC', '')), 'image/heic');
+  assert.equal(libraryType(file('charges.csv', 'application/vnd.ms-excel')), 'text/csv');
+  assert.equal(libraryType(file('scan', 'application/pdf')), 'application/pdf');
+  assert.equal(libraryFileError(file('big.pdf', 'application/pdf', 20 * 1024 * 1024)), '');
+  assert.match(libraryFileError(file('big.pdf', 'application/pdf', 20 * 1024 * 1024 + 1)), /larger than 20MB/);
+  assert.match(libraryFileError(file('empty.pdf', 'application/pdf', 0)), /is empty/);
+  for (const [name, type] of [['page.html', 'text/html'], ['logo.svg', 'image/svg+xml'], ['all.zip', 'application/zip'], ['run.exe', 'application/x-msdownload'], ['mystery', '']]) {
+    assert.match(libraryFileError(file(name, type)), /can’t be saved here/, name);
+  }
+  // Every type the app sends is one the bucket is told to allow.
+  assert.ok(libraryAccept.split(',').every((extension) => libraryTypes.includes(libraryType(file(`x${extension}`, '')))));
+});
+
+test('the migration allows exactly the types the app sends', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const sql = await readFile(new URL('../supabase/migrations/20261115000300_document_library.sql', import.meta.url), 'utf8');
+  const allowed = [...sql.slice(sql.indexOf('array['), sql.indexOf(']', sql.indexOf('array['))).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  assert.deepEqual([...allowed].sort(), [...libraryTypes].sort());
+  assert.match(sql, /'library', 'library', false, 20971520,/);
+});
+
+test('files a browser can show open in a tab; the rest are downloaded', () => {
+  assert.deepEqual(['a.pdf', 'b.PNG', 'c.jpeg', 'd.txt'].map(viewable), [true, true, true, true]);
+  assert.deepEqual(['a.docx', 'b.xlsx', 'c.heic', 'd.csv', 'noextension'].map(viewable), [false, false, false, false, false]);
+});
+
+test('a storage error is turned into what to do about it', () => {
+  assert.deepEqual(uploadProblem('a.pdf', 'Bucket not found'), { text: 'Your document library isn’t set up yet.', setup: true });
+  assert.equal(uploadProblem('a.pdf', 'new row violates row-level security policy').setup, true);
+  assert.match(uploadProblem('a.docx', 'mime type application/msword is not supported').text, /file type the library doesn’t accept yet/);
+  assert.match(uploadProblem('a.pdf', 'The object exceeded the maximum allowed size').text, /too large/);
+  assert.match(uploadProblem('a.pdf', 'jwt expired').text, /Sign in again/);
+  assert.equal(uploadProblem('a.pdf', 'Something odd happened').text, 'a.pdf couldn’t be saved (Something odd happened). Try again.');
 });
 
 test('sizes read naturally', () => {
