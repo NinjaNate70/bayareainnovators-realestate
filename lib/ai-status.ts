@@ -7,7 +7,7 @@
 // text never leave the server.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { claudeClient } from './claude-json.ts';
+import { claudeClient, fastMode } from './claude-json.ts';
 
 type Fetch = typeof fetch;
 
@@ -26,6 +26,8 @@ export type ServiceStatus = {
   available_models: string[];
   // True for a service the app works without.
   optional?: boolean;
+  // Something worth knowing about a working service, such as its speed setting.
+  note?: string;
 };
 
 const timedOut = (error: unknown) => error instanceof Error && error.name === 'TimeoutError';
@@ -111,12 +113,35 @@ async function checkClaude(apiKey: string | undefined, model: string, call: Fetc
     };
   }
   try {
-    const started = Date.now();
-    await client.messages.create({
+    const test = (fast: boolean) => client.messages.create({
       model, max_tokens: 2000,
       messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
+      ...(fast ? { speed: 'fast' as const } : {}),
     }, { timeout: 15_000 });
-    return { ...base, ok: true, answered_in_ms: Date.now() - started };
+    let started = Date.now();
+    if (!fastMode(model)) {
+      await test(false);
+      return { ...base, ok: true, answered_in_ms: Date.now() - started };
+    }
+    // Try it the way the app runs: fast first, standard if fast is turned away.
+    try {
+      const answer = await test(true);
+      return {
+        ...base, ok: true, answered_in_ms: Date.now() - started,
+        note: answer.usage.speed === 'fast'
+          ? 'Fast mode is on: answers come sooner, at a premium price. Set ANTHROPIC_FAST_MODE=off to turn it off.'
+          : 'Fast mode was requested but this answer ran at standard speed.',
+      };
+    } catch (error) {
+      if (!(error instanceof Anthropic.APIError) || !status(error)) throw error;
+      const refused = status(error);
+      started = Date.now();
+      await test(false);
+      return {
+        ...base, ok: true, answered_in_ms: Date.now() - started,
+        note: `Fast mode isn’t available to this key right now (${refused}), so requests run at standard speed. Check that your Claude plan includes fast mode for ${model}.`,
+      };
+    }
   } catch (error) {
     if (error instanceof Anthropic.APIConnectionTimeoutError) {
       return { ...base, problem: 'Claude did not answer a one-word test within 15 seconds.', fix: 'Retry shortly, or choose a faster model in ANTHROPIC_MODEL.' };

@@ -217,6 +217,7 @@ type ServiceStatus = {
   fix: string;
   available_models: string[];
   optional?: boolean;
+  note?: string;
 };
 
 // Tests the site's AI keys and models and shows what, if anything, is wrong.
@@ -284,10 +285,13 @@ function AiCheck() {
                 Model {item.model} · {item.used_for}
               </span>
               {item.ok ? (
-                <span>
-                  Answered a test in{" "}
-                  {((item.answered_in_ms ?? 0) / 1000).toFixed(1)} seconds.
-                </span>
+                <>
+                  <span>
+                    Answered a test in{" "}
+                    {((item.answered_in_ms ?? 0) / 1000).toFixed(1)} seconds.
+                  </span>
+                  {item.note && <span>{item.note}</span>}
+                </>
               ) : (
                 <>
                   <span>{item.problem}</span>
