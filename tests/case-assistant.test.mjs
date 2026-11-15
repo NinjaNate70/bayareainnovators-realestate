@@ -68,44 +68,54 @@ test('does not trust model output', () => {
 const gemini = (value) => new Response(JSON.stringify({
   candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(value) }] } }],
 }));
-const openai = (value) => new Response(JSON.stringify({
-  choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }],
-}));
+const claude = (value, extra = {}) => new Response(JSON.stringify({
+  id: 'msg_test', type: 'message', role: 'assistant', model: 'claude-test',
+  content: [{ type: 'text', text: JSON.stringify(value) }],
+  stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, ...extra,
+}), { headers: { 'content-type': 'application/json' } });
 const options = (fetch, extra = {}) => ({
   request: parseAssistantRequest({ message: 'How long does my landlord have?', caseId, page: 'audit' }),
   caseRow: row, today: '2026-11-15', geminiKey: 'g-key', geminiModel: 'gemini-test',
-  openAiKey: 'o-key', openAiModel: 'openai-test', retryDelay: 0, fetch, ...extra,
+  claudeKey: 'c-key', claudeModel: 'claude-test', retryDelay: 0, fetch, ...extra,
 });
 
-test('Gemini answers as the chosen specialist and OpenAI reviews', async () => {
+test('Gemini answers as the chosen specialist and Claude reviews', async () => {
   const calls = [];
   const reply = await runAssistant(options(async (url, init) => {
     const body = JSON.parse(init.body);
-    calls.push({ url: String(url), headers: init.headers, body });
-    if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
+    calls.push({ url: String(url), headers: new Headers(init.headers), body });
+    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
     return gemini({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] });
   }));
   assert.deepEqual(reply, {
-    reply: 'They have 21 days.', agent: 'rules', agent_label: 'Deposit rules', reviewed_by: 'openai', revised: false,
+    reply: 'They have 21 days.', agent: 'rules', agent_label: 'Deposit rules', reviewed_by: 'claude', revised: false,
     sources: [{ id: 'G3', title: 'The 21-day deadline' }],
   });
   assert.equal(calls.length, 2);
   assert.match(calls[0].url, /models\/gemini-test:generateContent$/);
-  assert.equal(calls[0].headers['x-goog-api-key'], 'g-key');
-  assert.equal(calls[1].headers.Authorization, 'Bearer o-key');
-  assert.equal(calls[1].body.model, 'openai-test');
+  assert.equal(calls[0].headers.get('x-goog-api-key'), 'g-key');
+  assert.match(calls[1].url, /api\.anthropic\.com\/v1\/messages/);
+  assert.equal(calls[1].headers.get('authorization'), 'Bearer c-key');
+  assert.equal(calls[1].body.model, 'claude-test');
+  // Low effort, a closed JSON schema, and Anthropic's refusal fallback.
+  assert.equal(calls[1].body.output_config.effort, 'low');
+  assert.equal(calls[1].body.output_config.format.type, 'json_schema');
+  assert.equal(calls[1].body.output_config.format.schema.additionalProperties, false);
+  assert.deepEqual(calls[1].body.output_config.format.schema.required, ['approved', 'answer', 'guide_sections', 'note']);
+  assert.equal(calls[1].body.fallbacks, 'default');
+  assert.match(calls[1].headers.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
   // The specialist and the reviewer both get the guide and the case facts.
   const specialist = calls[0].body.systemInstruction.parts[0].text;
   assert.ok(depositGuide.every((section) => specialist.includes(`[${section.id}]`)));
   assert.match(calls[0].body.contents[0].parts[0].text, /"twenty_one_days_after_move_out":"2026-11-21"/);
-  assert.match(calls[1].body.messages[1].content, /Draft answer from the Deposit rules:\nThey have 21 days\./);
+  assert.match(calls[1].body.messages[0].content[0].text, /Draft answer from the Deposit rules:\nThey have 21 days\./);
   // No key ever appears in a prompt.
   assert.ok(!JSON.stringify(calls.map((call) => call.body)).includes('-key'));
 });
 
 test('a rejected draft is replaced by the reviewer’s correction', async () => {
   const reply = await runAssistant(options(async (url) => {
-    if (String(url).includes('openai.com')) return openai({ approved: false, answer: 'The guide does not cover that.', guide_sections: [], note: 'Removed an unsupported rule.' });
+    if (String(url).includes('anthropic.com')) return claude({ approved: false, answer: 'The guide does not cover that.', guide_sections: [], note: 'Removed an unsupported rule.' });
     return gemini({ agent: 'rules', answer: 'You will win triple damages.', guide_sections: ['G9'] });
   }));
   assert.equal(reply.reply, 'The guide does not cover that.');
@@ -113,73 +123,73 @@ test('a rejected draft is replaced by the reviewer’s correction', async () => 
   assert.deepEqual(reply.sources, []);
 });
 
-test('Gemini reviews when OpenAI is missing or failing', async () => {
-  for (const extra of [{ openAiKey: undefined }, {}]) {
+test('Gemini reviews when Claude is missing or failing', async () => {
+  for (const extra of [{ claudeKey: undefined }, {}]) {
     let n = 0;
     const urls = [];
     const reply = await runAssistant(options(async (url) => {
       urls.push(String(url));
-      if (String(url).includes('openai.com')) return new Response('nope', { status: 500 });
+      if (String(url).includes('anthropic.com')) return new Response('nope', { status: 500 });
       n += 1;
       if (n === 1) return gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
       return gemini({ approved: true, answer: '', guide_sections: [], note: '' });
     }, extra));
     assert.equal(reply.reviewed_by, 'gemini');
     assert.equal(reply.reply, 'Open the Letter tab.');
-    assert.equal(urls.filter((url) => url.includes('openai.com')).length, extra.openAiKey === undefined && 'openAiKey' in extra ? 0 : 1);
+    assert.equal(urls.filter((url) => url.includes('anthropic.com')).length, extra.claudeKey === undefined && 'claudeKey' in extra ? 0 : 1);
   }
 });
 
 test('an unreviewed draft is never returned', async () => {
   let n = 0;
   await assert.rejects(runAssistant(options(async (url) => {
-    if (String(url).includes('openai.com')) return new Response('down', { status: 503 });
+    if (String(url).includes('anthropic.com')) return new Response('down', { status: 503 });
     n += 1;
     if (n === 1) return gemini({ agent: 'steps', answer: 'Draft.', guide_sections: [] });
     return new Response('down', { status: 503 });
   })), /Gemini request failed \(503\)/);
 });
 
-test('a busy Gemini model is retried, then OpenAI drafts and reviews', async () => {
+test('a busy Gemini model is retried, then Claude drafts and reviews', async () => {
   let geminiCalls = 0;
   const retried = await runAssistant(options(async (url) => {
-    if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: [], note: '' });
+    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' });
     geminiCalls += 1;
     return geminiCalls === 1 ? new Response('overloaded', { status: 503 }) : gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] });
   }));
   assert.equal(geminiCalls, 2);
   assert.equal(retried.reply, 'Open the Letter tab.');
 
-  const openAiPrompts = [];
+  const claudePrompts = [];
   const covered = await runAssistant(options(async (url, init) => {
-    if (!String(url).includes('openai.com')) return new Response('overloaded', { status: 503 });
-    openAiPrompts.push(JSON.parse(init.body).messages[0].content);
-    return openAiPrompts.length === 1
-      ? openai({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] })
-      : openai({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
+    if (!String(url).includes('anthropic.com')) return new Response('overloaded', { status: 503 });
+    claudePrompts.push(JSON.parse(init.body).system);
+    return claudePrompts.length === 1
+      ? claude({ agent: 'rules', answer: 'They have 21 days.', guide_sections: ['G3'] })
+      : claude({ approved: true, answer: '', guide_sections: ['G3'], note: '' });
   }));
-  assert.deepEqual([covered.reply, covered.agent, covered.reviewed_by], ['They have 21 days.', 'rules', 'openai']);
-  assert.match(openAiPrompts[0], /Return JSON with: agent/);
-  assert.match(openAiPrompts[1], /independent reviewer/);
+  assert.deepEqual([covered.reply, covered.agent, covered.reviewed_by], ['They have 21 days.', 'rules', 'claude']);
+  assert.match(claudePrompts[0], /First choose the one specialist/);
+  assert.match(claudePrompts[1], /independent reviewer/);
 });
 
 test('with both services down the error names each one', async () => {
-  await assert.rejects(runAssistant(options(async (url) => new Response('down', { status: String(url).includes('openai.com') ? 429 : 503 }))),
-    { name: 'AiServiceError', message: 'Gemini request failed (503); OpenAI request failed (429).' });
-  // OpenAI drafted, then the review failed on both.
+  await assert.rejects(runAssistant(options(async (url) => new Response('down', { status: String(url).includes('anthropic.com') ? 429 : 503 }))),
+    { name: 'AiServiceError', message: 'Gemini request failed (503); Claude request failed (429).' });
+  // Claude drafted, then the review failed on both.
   let n = 0;
   await assert.rejects(runAssistant(options(async (url) => {
-    if (!String(url).includes('openai.com')) return new Response('down', { status: 503 });
+    if (!String(url).includes('anthropic.com')) return new Response('down', { status: 503 });
     n += 1;
-    return n === 1 ? openai({ agent: 'steps', answer: 'Draft.', guide_sections: [] }) : new Response('no credit', { status: 429 });
-  })), { message: 'OpenAI request failed (429); Gemini request failed (503).' });
-  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }), { openAiKey: undefined })), /Gemini request failed \(503\)/);
+    return n === 1 ? claude({ agent: 'steps', answer: 'Draft.', guide_sections: [] }) : new Response('no credit', { status: 429 });
+  })), { message: 'Claude request failed (429); Gemini request failed (503).' });
+  await assert.rejects(runAssistant(options(async () => new Response('down', { status: 503 }), { claudeKey: undefined })), /Gemini request failed \(503\)/);
 });
 
 test('asks Gemini for light thinking, and drops the setting for a model that rejects it', async () => {
   const sent = [];
   const fetch = async (url, init) => {
-    if (String(url).includes('openai.com')) return openai({ approved: true, answer: '', guide_sections: [], note: '' });
+    if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' });
     const config = JSON.parse(init.body).generationConfig;
     sent.push(config.thinkingConfig?.thinkingLevel ?? 'none');
     if (config.thinkingConfig) return new Response('unknown field', { status: 400 });
@@ -190,4 +200,19 @@ test('asks Gemini for light thinking, and drops the setting for a model that rej
   assert.equal((await runAssistant(options(fetch, model))).reply, 'Ok.');
   // Tried once, then remembered for that model.
   assert.deepEqual(sent, ['low', 'none', 'none']);
+});
+
+test('a Claude refusal or a cut-off answer is treated as a failed review', async () => {
+  for (const extra of [{ stop_reason: 'refusal', content: [] }, { stop_reason: 'max_tokens' }]) {
+    let geminiCalls = 0;
+    const reply = await runAssistant(options(async (url) => {
+      if (String(url).includes('anthropic.com')) return claude({ approved: true, answer: '', guide_sections: [], note: '' }, extra);
+      geminiCalls += 1;
+      return geminiCalls === 1
+        ? gemini({ agent: 'steps', answer: 'Open the Letter tab.', guide_sections: [] })
+        : gemini({ approved: true, answer: '', guide_sections: [], note: '' });
+    }));
+    // Gemini reviewed instead, so the answer is still a reviewed one.
+    assert.deepEqual([reply.reviewed_by, geminiCalls], ['gemini', 2]);
+  }
 });

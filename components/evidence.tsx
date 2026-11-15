@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { Charge, RentalCase, Verdict } from "@/types/case";
 import { rules } from "@/lib/fixtures/demo-case";
-import { depositGuide, guideSource } from "@/lib/case-assistant";
+import { depositGuide, guideSource } from "@/lib/deposit-guide";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { money, getFile } from "@/lib/cases";

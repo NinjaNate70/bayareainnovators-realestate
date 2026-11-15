@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 type Reply = {
   reply: string;
   agent_label: string;
-  reviewed_by: "openai" | "gemini";
+  reviewed_by: "claude" | "gemini";
   revised: boolean;
   sources: { id: string; title: string }[];
 };
@@ -120,7 +120,7 @@ export function CaseAssistant({
       <div className="assistant">
         <p className="small muted">
           Your question and this case’s details are sent to Google Gemini and
-          OpenAI to prepare an answer. Rules come from the California Courts
+          Anthropic’s Claude to prepare an answer. Rules come from the California Courts
           Self-Help Guide.
         </p>
         <div className="assistant-log" role="log" aria-live="polite">
@@ -149,7 +149,7 @@ export function CaseAssistant({
                 <p className="assistant-meta">
                   {message.agent_label} ·{" "}
                   {message.revised ? "corrected by" : "checked by"}{" "}
-                  {message.reviewed_by === "openai" ? "OpenAI" : "Gemini"}{" "}
+                  {message.reviewed_by === "claude" ? "Claude" : "Gemini"}{" "}
                   reviewer
                   {message.sources?.length
                     ? ` · Guide: ${message.sources.map((source) => source.title).join("; ")}`

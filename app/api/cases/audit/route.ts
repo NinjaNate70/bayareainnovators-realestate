@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { depositGuide } from '@/lib/case-assistant';
+import { depositGuide } from '@/lib/deposit-guide';
 import { runCaseAudit, type AuditFile, type AuditInput, type InspectionNote } from '@/lib/case-audit';
+import { defaultClaudeModel } from '@/lib/claude-json';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,7 @@ function failure(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   // Raised when a service and its stand-in both failed; it names each one.
   if (error instanceof Error && error.name === 'AiServiceError') return message.slice(0, -1);
-  return /^(Gemini|OpenAI) (request failed \(\d{3}\)|did not return a complete \w+)\.$/.test(message)
+  return /^(Gemini|Claude) (request failed \(\d{3}\)|did not return a complete \w+|declined the request|could not be reached)\.$/.test(message)
     ? message.slice(0, -1)
     : 'unexpected error';
 }
@@ -162,8 +163,8 @@ export async function POST(request: Request) {
       guide: [...depositGuide],
       geminiKey,
       geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      openAiKey: process.env.OPENAI_API_KEY,
-      openAiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      claudeKey: process.env.ANTHROPIC_API_KEY,
+      claudeModel: process.env.ANTHROPIC_MODEL || defaultClaudeModel,
     });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

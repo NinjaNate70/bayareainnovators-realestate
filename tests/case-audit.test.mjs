@@ -57,7 +57,11 @@ test('a disputed charge is counted up to its amount; missing and bad output stay
 });
 
 const gemini = (value) => new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(value) }] } }] }));
-const openai = (value) => new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }] }));
+const claude = (value, extra = {}) => new Response(JSON.stringify({
+  id: 'msg_test', type: 'message', role: 'assistant', model: 'claude-test',
+  content: [{ type: 'text', text: JSON.stringify(value) }],
+  stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, ...extra,
+}), { headers: { 'content-type': 'application/json' } });
 const reading = { documents: [], charges: [{ charge_id: 'C2', appears_in_letter: true, amount_in_letter: 150.5, landlord_reason: 'Cleaning', receipt_or_invoice: 'not_attached', work_details: '', file_ids: ['L1'] }], itemized_statement: true, lease_terms: [], notes: '' };
 const seen = { charges: [{ charge_id: 'C1', finding: 'wear_and_tear', description: 'Light scuffs.', photo_ids: ['P1', 'P2'] }] };
 const verdict = { charges: [
@@ -65,37 +69,43 @@ const verdict = { charges: [
   { charge_id: 'C2', status: 'disputable', reason: 'No receipt is attached.', evidence_ids: ['L1'], guide_sections: ['G4'], requests: ['Ask for the cleaning invoice'] },
   { charge_id: 'C3', status: 'info', reason: 'The key is not mentioned.', evidence_ids: [], guide_sections: [], requests: ['The key return receipt'] },
 ] };
-const keys = { guide, geminiKey: 'g-key', geminiModel: 'gemini-test', openAiKey: 'o-key', openAiModel: 'openai-test', retryDelay: 0 };
-// Which job an OpenAI request is doing, from what it carries.
-const openAiRole = (body) => {
-  const parts = body.messages[1].content;
-  if (parts.some((part) => part.type === 'file' || part.image_url?.url.startsWith('data:image/png'))) return 'documents';
-  return parts.some((part) => part.type === 'image_url') ? 'photos' : 'auditor';
+const keys = { guide, geminiKey: 'g-key', geminiModel: 'gemini-test', claudeKey: 'c-key', claudeModel: 'claude-test', retryDelay: 0 };
+// Which job a Claude request is doing, from what it carries.
+const claudeRole = (body) => {
+  const parts = body.messages[0].content;
+  if (parts.some((part) => part.type === 'document' || part.source?.media_type === 'image/png')) return 'documents';
+  return parts.some((part) => part.type === 'image') ? 'photos' : 'auditor';
 };
 const role = (body) => (body.contents?.[0].parts.some((part) => part.inline_data) ? 'photos' : body.contents ? 'auditor' : 'documents');
 
-test('OpenAI reads the documents, Gemini the photos, and the auditor sees both', async () => {
+test('Claude reads the documents, Gemini the photos, and the auditor sees both', async () => {
   const calls = [];
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
     const body = JSON.parse(init.body);
-    calls.push({ url: String(url), body, headers: init.headers });
-    if (String(url).includes('openai.com')) return openai(reading);
+    calls.push({ url: String(url), body, headers: new Headers(init.headers) });
+    if (String(url).includes('anthropic.com')) return claude(reading);
     return gemini(role(body) === 'photos' ? seen : verdict);
   } });
-  assert.equal(result.documents_read_by, 'openai');
+  assert.equal(result.documents_read_by, 'claude');
   assert.deepEqual([result.documents_read, result.photos_read], [2, 2]);
   assert.deepEqual(result.charges.map((c) => [c.id, c.verdict, c.high]), [['C1', 'not-allowed', 400], ['C2', 'disputable', 150.5], ['C3', 'info', 0]]);
 
-  const docs = calls.find((call) => call.url.includes('openai.com'));
-  assert.equal(docs.headers.Authorization, 'Bearer o-key');
-  const sent = docs.body.messages[1].content;
-  assert.deepEqual(sent.find((part) => part.type === 'file').file, { filename: 'letter.pdf', file_data: 'data:application/pdf;base64,UERG' });
-  assert.equal(sent.find((part) => part.type === 'image_url').image_url.url, 'data:image/png;base64,TEVBU0U=');
+  const docs = calls.find((call) => call.url.includes('anthropic.com'));
+  assert.equal(docs.headers.get('authorization'), 'Bearer c-key');
+  const sent = docs.body.messages[0].content;
+  // The PDF goes as a document block and the scanned lease as an image, each after its label.
+  assert.deepEqual(sent.find((part) => part.type === 'document').source, { type: 'base64', media_type: 'application/pdf', data: 'UERG' });
+  assert.deepEqual(sent.find((part) => part.type === 'image').source, { type: 'base64', media_type: 'image/png', data: 'TEVBU0U=' });
+  assert.equal(sent[sent.findIndex((part) => part.type === 'document') - 1].text, 'File L1 (letter): letter.pdf');
+  // Nullable and nested fields are closed off the way structured outputs require.
+  const item = docs.body.output_config.format.schema.properties.charges.items;
+  assert.equal(item.additionalProperties, false);
+  assert.deepEqual(item.properties.amount_in_letter, { anyOf: [{ type: 'number' }, { type: 'null' }] });
   // Documents go only to the document reader; photos only to the photo analyst.
   assert.ok(!JSON.stringify(docs.body).includes('QkVGT1JF'));
-  const photos = calls.find((call) => !call.url.includes('openai.com') && role(call.body) === 'photos');
+  const photos = calls.find((call) => !call.url.includes('anthropic.com') && role(call.body) === 'photos');
   assert.deepEqual(photos.body.contents[0].parts.filter((part) => part.inline_data).map((part) => part.inline_data.data), ['QkVGT1JF', 'QUZURVI=']);
-  const auditor = calls.find((call) => !call.url.includes('openai.com') && role(call.body) === 'auditor');
+  const auditor = calls.find((call) => !call.url.includes('anthropic.com') && role(call.body) === 'auditor');
   const context = auditor.body.contents[0].parts[0].text;
   for (const expected of ['"receipt_or_invoice":"not_attached"', '"finding":"wear_and_tear"', '"spot":"Sink"', '"move_out_date":"2026-10-31"']) assert.ok(context.includes(expected), expected);
   assert.ok(guide.every((section) => auditor.body.systemInstruction.parts[0].text.includes(`[${section.id}]`)));
@@ -103,10 +113,10 @@ test('OpenAI reads the documents, Gemini the photos, and the auditor sees both',
   assert.ok(!context.includes('UERG') && !JSON.stringify(calls.map((call) => call.body)).includes('-key'));
 });
 
-test('Gemini reads the documents when OpenAI is missing or failing', async () => {
-  for (const extra of [{ openAiKey: undefined }, {}]) {
+test('Gemini reads the documents when Claude is missing or failing', async () => {
+  for (const extra of [{ claudeKey: undefined }, {}]) {
     const result = await runCaseAudit({ ...keys, ...extra, input, fetch: async (url, init) => {
-      if (String(url).includes('openai.com')) return new Response('no', { status: 400 });
+      if (String(url).includes('anthropic.com')) return new Response('no', { status: 400 });
       const body = JSON.parse(init.body);
       const parts = body.contents[0].parts;
       if (parts.some((part) => part.inline_data?.mime_type === 'application/pdf')) return gemini(reading);
@@ -120,7 +130,7 @@ test('Gemini reads the documents when OpenAI is missing or failing', async () =>
 test('evidence a reader could not open cannot support a finding', async () => {
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
     const body = JSON.parse(init.body);
-    if (String(url).includes('openai.com')) return openAiRole(body) === 'documents' ? openai(reading) : new Response('down', { status: 500 });
+    if (String(url).includes('anthropic.com')) return claudeRole(body) === 'documents' ? claude(reading) : new Response('down', { status: 500 });
     if (role(body) === 'photos') return new Response('down', { status: 503 });
     assert.match(body.contents[0].parts[0].text, /photos could not be examined/);
     return gemini(verdict);
@@ -145,7 +155,7 @@ test('a case with no files is audited without the readers and stays open', async
 test('the audit fails as a whole, naming Gemini, if no auditor answers', async () => {
   await assert.rejects(runCaseAudit({ ...keys, input, fetch: async (url, init) => {
     const body = JSON.parse(init.body);
-    if (String(url).includes('openai.com')) return openAiRole(body) === 'documents' ? openai(reading) : new Response('down', { status: 500 });
+    if (String(url).includes('anthropic.com')) return claudeRole(body) === 'documents' ? claude(reading) : new Response('down', { status: 500 });
     return role(body) === 'photos' ? gemini(seen) : new Response('down', { status: 500 });
   } }), /Gemini request failed \(500\)/);
 });
@@ -154,9 +164,9 @@ test('a busy Gemini model is retried once', async () => {
   const attempts = { photos: 0, auditor: 0 };
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
     const body = JSON.parse(init.body);
-    if (String(url).includes('openai.com')) {
-      assert.equal(openAiRole(body), 'documents');
-      return openai(reading);
+    if (String(url).includes('anthropic.com')) {
+      assert.equal(claudeRole(body), 'documents');
+      return claude(reading);
     }
     const job = role(body);
     attempts[job] += 1;
@@ -167,18 +177,18 @@ test('a busy Gemini model is retried once', async () => {
   assert.deepEqual(result.charges.map((c) => c.verdict), ['not-allowed', 'disputable', 'info']);
 });
 
-test('OpenAI examines the photos and audits when Gemini stays overloaded', async () => {
-  const openAiJobs = [];
+test('Claude examines the photos and audits when Gemini stays overloaded', async () => {
+  const claudeJobs = [];
   let geminiCalls = 0;
   const result = await runCaseAudit({ ...keys, input, fetch: async (url, init) => {
     const body = JSON.parse(init.body);
-    if (!String(url).includes('openai.com')) { geminiCalls += 1; return new Response('overloaded', { status: 503 }); }
-    const job = openAiRole(body);
-    openAiJobs.push(job);
-    assert.match(body.messages[0].content, /Return JSON with/);
-    return openai(job === 'documents' ? reading : job === 'photos' ? seen : verdict);
+    if (!String(url).includes('anthropic.com')) { geminiCalls += 1; return new Response('overloaded', { status: 503 }); }
+    const job = claudeRole(body);
+    claudeJobs.push(job);
+    assert.equal(body.output_config.format.type, 'json_schema');
+    return claude(job === 'documents' ? reading : job === 'photos' ? seen : verdict);
   } });
-  assert.deepEqual(openAiJobs.sort(), ['auditor', 'documents', 'photos']);
+  assert.deepEqual(claudeJobs.sort(), ['auditor', 'documents', 'photos']);
   // Photos and auditor each tried Gemini twice before handing over.
   assert.equal(geminiCalls, 4);
   assert.deepEqual([result.documents_read, result.photos_read], [2, 2]);
