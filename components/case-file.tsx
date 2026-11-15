@@ -12,6 +12,7 @@ import type { RentalCase, CaseTab, Verdict } from '@/types/case';
 import { OwedCard } from '@/components/owed-card';
 import { LetterTab } from '@/components/letter-tab';
 import { PhotosTab } from '@/components/photos-tab';
+import { RepliesTab } from '@/components/replies-tab';
 
 export function CaseFile({ id }: { id: string }) {
  const search = useSearchParams(); const requested=search.get('tab'); const tab: CaseTab = requested==='photos'||requested==='letter'||requested==='replies'?requested:'audit';
@@ -21,7 +22,7 @@ export function CaseFile({ id }: { id: string }) {
  if(loading)return <Shell caseId={id} tab={tab}><div role="status" className="loading-state"><LoaderCircle className="spin"/> Opening your case file…</div></Shell>;
  if(!data)return <Shell><div className="empty-block"><FolderOpen size={36} aria-hidden="true"/><h1>{error?'Your saved case is unavailable':'We couldn’t find that case.'}</h1><p>{error||'Cases are stored in the browser where you created them. You can start a case or explore the example.'}</p><div className="split-row wrap"><Button asChild><Link href="/case/new">Start a case</Link></Button><Button asChild variant="outline"><Link href="/case/demo">Open demo case</Link></Button>{error&&<Button variant="outline" onClick={()=>setRetry(n=>n+1)}>Try again</Button>}</div></div></Shell>;
  return <Shell caseId={id} tab={tab}><div className="case-back"><Link href="/" className="text-link"><ArrowLeft size={16} aria-hidden="true"/>Home</Link><span>/</span><span>Case file</span></div><div className="page-heading"><div><div className="split-row wrap" style={{justifyContent:'flex-start',gap:10}}><p className="eyebrow" style={{margin:0}}>YOUR DEPOSIT, IN FOCUS</p>{data.demo&&<span className="badge">DEMO CASE</span>}</div><h1>{data.address.split(',')[0]||'Your rental case'}</h1><p>{data.address.split(',').slice(1).join(',').trim()||'California rental'} · {data.moveOut?`Moved out ${data.moveOut}`:'Move-out date unconfirmed'}</p></div><Button asChild variant="outline"><Link href={`/case/new?edit=${data.id}`}>Edit evidence</Link></Button></div>{data.demo&&<div className="demo-banner"><span className="demo-dot"/><span>Illustrative example · prewritten findings and rule topics, not live legal analysis.</span></div>}{error&&<div role="alert" className="notice"><p>{error}</p><Button variant="outline" onClick={()=>update({})}>Retry save</Button></div>}{data.stale&&<div className="notice"><strong>Needs review</strong><p>Your evidence changed. Review the details before relying on the earlier analysis.</p><Button asChild variant="outline"><Link href={`/case/new?step=review&edit=${id}`}>Review and run audit</Link></Button></div>}
- {tab==='audit'?<AuditTab data={data}/>:tab==='letter'?<LetterTab data={data} onUpdate={update}/>:tab==='photos'?<PhotosTab data={data} onUpdate={update}/>:<Card><h2>{tab[0].toUpperCase()+tab.slice(1)}</h2><p>Review your audit to prepare this part of your case.</p><Button asChild variant="outline"><Link href={`/case/${id}`}>Back to audit</Link></Button></Card>}
+ {tab==='audit'?<AuditTab data={data}/>:tab==='letter'?<LetterTab data={data} onUpdate={update}/>:tab==='photos'?<PhotosTab data={data} onUpdate={update}/>:<RepliesTab data={data} onUpdate={update}/>}
  </Shell>;
 }
 
