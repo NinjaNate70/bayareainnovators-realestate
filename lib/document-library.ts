@@ -23,7 +23,18 @@ const byExtension: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 export const libraryTypes = [...new Set(Object.values(byExtension))];
-export const libraryAccept = Object.keys(byExtension).map((extension) => `.${extension}`).join(',');
+// For the file picker. Types and extensions are both listed because phones
+// honour one or the other; "image/*" lets a phone offer its photo library.
+export const libraryAccept = ['image/*', ...libraryTypes.filter((type) => !type.startsWith('image/')), ...Object.keys(byExtension).map((extension) => `.${extension}`)].join(',');
+
+// Phone cameras hand back every photo as "image.jpg". Give each a dated name
+// so they can be told apart in the list.
+export function photoName(name: string, taken: Date = new Date()) {
+  const found = name.match(/^image\.(jpe?g|png|heic|heif|webp)$/i);
+  if (!found) return name;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `Photo ${taken.getFullYear()}-${pad(taken.getMonth() + 1)}-${pad(taken.getDate())} ${pad(taken.getHours())}.${pad(taken.getMinutes())}.${pad(taken.getSeconds())}.${found[1].toLowerCase()}`;
+}
 export const libraryKinds = 'PDF, Word, Excel, text, JPG, PNG, WebP or HEIC';
 export const libraryMaxBytes = 20 * 1024 * 1024;
 

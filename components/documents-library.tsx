@@ -1,18 +1,25 @@
 "use client";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import {
   Download,
   ExternalLink,
   FileText,
-  FileUp,
   FolderOpen,
   ImageIcon,
   LoaderCircle,
   Trash2,
+  X,
 } from "lucide-react";
 import type { Evidence } from "@/types/case";
 import { Shell } from "@/components/shell";
+import { FileDrop } from "@/components/file-drop";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/provider";
@@ -29,6 +36,7 @@ import {
   libraryFolder,
   libraryKinds,
   libraryType,
+  photoName,
   storedName,
   uploadProblem,
   viewable,
@@ -53,12 +61,13 @@ const day = (value: string | undefined) =>
 export function DocumentsLibrary() {
   const { session } = useAuth();
   const userId = session?.user.id;
-  const inputId = useId();
   const [saved, setSaved] = useState<Saved[] | null>(null);
   const [caseFiles, setCaseFiles] = useState<CaseFile[] | null>(null);
   const [error, setError] = useState("");
   const [setup, setSetup] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Files picked but not yet uploaded.
+  const [chosen, setChosen] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   // The file being fetched, so its buttons can show progress.
   const [working, setWorking] = useState("");
@@ -125,17 +134,35 @@ export function DocumentsLibrary() {
     };
   }, [userId, loadSaved]);
 
-  async function add(list: FileList | null) {
-    if (!list?.length || !supabase || !userId || latch.current) return;
+  // Choosing files only lists them; nothing is sent until Upload is pressed.
+  function choose(files: File[]) {
+    setError("");
+    setStatus("");
+    const accepted: File[] = [];
+    for (const original of files) {
+      const name = photoName(original.name);
+      const file =
+        name === original.name
+          ? original
+          : new File([original], name, { type: original.type });
+      const problem = libraryFileError(file);
+      if (problem) setError(problem);
+      else accepted.push(file);
+    }
+    if (accepted.length) setChosen((current) => [...current, ...accepted]);
+  }
+  async function upload(event: FormEvent) {
+    event.preventDefault();
+    if (!chosen.length || !supabase || !userId || latch.current) return;
     latch.current = true;
     setBusy(true);
     setError("");
     setStatus("");
+    const left = [...chosen];
     let count = 0;
     try {
-      for (const file of Array.from(list)) {
-        const problem = libraryFileError(file);
-        if (problem) throw new Error(problem);
+      while (left.length) {
+        const file = left[0];
         const { error } = await supabase.storage
           .from(libraryBucket)
           .upload(`${libraryFolder(userId)}/${storedName(file.name)}`, file, {
@@ -146,6 +173,7 @@ export function DocumentsLibrary() {
           if (found.setup) setSetup(true);
           throw new Error(found.text);
         }
+        left.shift();
         count += 1;
       }
     } catch (cause) {
@@ -153,6 +181,8 @@ export function DocumentsLibrary() {
         cause instanceof Error ? cause.message : "The file couldn’t be saved.",
       );
     } finally {
+      // Anything that didn't go up stays selected, ready to try again.
+      setChosen(left);
       if (count)
         setStatus(`${count} document${count === 1 ? "" : "s"} saved.`);
       await loadSaved();
@@ -259,43 +289,72 @@ export function DocumentsLibrary() {
                 SQL Editor, then reload this page.
               </p>
             )}
-            <div className="upload-group">
-              <label className="field-label" htmlFor={inputId}>
-                Add documents
-              </label>
-              <div
-                className="upload-zone"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (!busy) void add(e.dataTransfer.files);
-                }}
-              >
-                <FileUp size={27} aria-hidden="true" />
-                <strong>
-                  {busy ? "Saving…" : "Drop files here, or browse"}
-                </strong>
-                <span className="small muted">
-                  {libraryKinds} · up to 20MB each
-                </span>
-                <input
-                  id={inputId}
-                  type="file"
+            <form className="library-add" onSubmit={(e) => void upload(e)}>
+              <div className="library-pickers">
+                <FileDrop
+                  label="Choose files"
                   multiple
-                  disabled={busy}
                   accept={libraryAccept}
-                  aria-describedby={`${inputId}-hint`}
-                  onChange={(e) => {
-                    void add(e.target.files);
-                    e.target.value = "";
-                  }}
+                  prompt="Choose files"
+                  hint={`${libraryKinds} · up to 20MB each`}
+                  note="From this device. You can pick several at once."
+                  disabled={busy}
+                  onFiles={choose}
+                />
+                <FileDrop
+                  label="Take a photo"
+                  accept="image/*"
+                  capture="environment"
+                  prompt="Tap to take a photo"
+                  hint="Opens your camera on a phone"
+                  note="Good for a receipt or a page of your lease."
+                  disabled={busy}
+                  onFiles={choose}
                 />
               </div>
-              <p id={`${inputId}-hint`} className="small muted">
+              {chosen.length > 0 && (
+                <ul className="file-list library-list" aria-label="Selected files">
+                  {chosen.map((file, index) => (
+                    <li key={`${file.name}/${index}`}>
+                      <FileText size={20} aria-hidden="true" />
+                      <span>
+                        {file.name}
+                        <small>{fileSize(file.size)} · not uploaded yet</small>
+                      </span>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Remove ${file.name} from the selection`}
+                        disabled={busy}
+                        onClick={() =>
+                          setChosen((current) =>
+                            current.filter((_, i) => i !== index),
+                          )
+                        }
+                      >
+                        <X size={18} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button disabled={!chosen.length || busy}>
+                {busy ? (
+                  <>
+                    <LoaderCircle className="spin" size={18} aria-hidden="true" />{" "}
+                    Uploading…
+                  </>
+                ) : chosen.length ? (
+                  `Upload ${chosen.length} document${chosen.length === 1 ? "" : "s"}`
+                ) : (
+                  "Upload"
+                )}
+              </Button>
+              <p className="small muted">
                 Stored privately in your account. Only you can open them. They
                 aren’t part of any case or audit until you add them to one.
               </p>
-            </div>
+            </form>
             {saved === null ? (
               <p role="status">
                 <LoaderCircle className="spin" size={18} aria-hidden="true" />{" "}

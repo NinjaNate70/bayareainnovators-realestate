@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { displayName, fileSize, libraryAccept, libraryFileError, libraryFolder, libraryType, libraryTypes, storedName, uploadProblem, viewable } from '../lib/document-library.ts';
+import { displayName, fileSize, libraryAccept, libraryFileError, libraryFolder, libraryType, libraryTypes, photoName, storedName, uploadProblem, viewable } from '../lib/document-library.ts';
 
 test('files are stored under the renter’s own folder with a unique, safe name', () => {
   const id = 'df2d7dbd-1b1d-4f0e-bf9b-5f4a90f87d01';
@@ -38,7 +38,10 @@ test('documents, spreadsheets and photos up to 20MB are accepted; web pages and 
     assert.match(libraryFileError(file(name, type)), /can’t be saved here/, name);
   }
   // Every type the app sends is one the bucket is told to allow.
-  assert.ok(libraryAccept.split(',').every((extension) => libraryTypes.includes(libraryType(file(`x${extension}`, '')))));
+  const accept = libraryAccept.split(',');
+  assert.ok(accept.filter((entry) => entry.startsWith('.')).every((extension) => libraryTypes.includes(libraryType(file(`x${extension}`, '')))));
+  // The picker lists types as well as extensions, so phones offer photos and files.
+  assert.ok(accept.includes('image/*') && accept.includes('application/pdf') && accept.includes('.docx') && accept.includes('.heic'));
 });
 
 test('the migration allows exactly the types the app sends', async () => {
@@ -65,4 +68,12 @@ test('a storage error is turned into what to do about it', () => {
 
 test('sizes read naturally', () => {
   assert.deepEqual([fileSize(500), fileSize(204800), fileSize(3.5 * 1024 * 1024), fileSize(undefined)], ['1 KB', '200 KB', '3.5 MB', '']);
+});
+
+test('camera photos get a dated name so they can be told apart', () => {
+  const taken = new Date(2026, 10, 15, 9, 5, 7);
+  assert.equal(photoName('image.jpg', taken), 'Photo 2026-11-15 09.05.07.jpg');
+  assert.equal(photoName('IMAGE.HEIC', taken), 'Photo 2026-11-15 09.05.07.heic');
+  assert.equal(photoName('Lease.pdf', taken), 'Lease.pdf');
+  assert.equal(photoName('my image.jpg', taken), 'my image.jpg');
 });
