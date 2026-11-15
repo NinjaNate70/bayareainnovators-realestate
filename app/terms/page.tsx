@@ -1,4 +1,6 @@
 import Link from "next/link";
+// Describe where data really lives for the backend this site was built with.
+const hosted = process.env.NEXT_PUBLIC_BACKEND === "supabase";
 export default function Terms() {
   return (
     <main className="policy-page">
@@ -13,8 +15,10 @@ export default function Terms() {
         agreement.
       </p>
       <p>
-        The current local demo keeps accounts and files in your browser. It
-        provides information, not legal advice. Do not rely on illustrative case
+        {hosted
+          ? "Accounts, case details and uploaded files are stored with our hosting provider, Supabase, and are private to each account."
+          : "The current local demo keeps accounts and files in your browser."}{" "}
+        It provides information, not legal advice. Do not rely on illustrative case
         findings as a legal determination.
       </p>
       <p>
