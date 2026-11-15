@@ -1,15 +1,21 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
+import { AuthProvider } from "@/components/auth/provider";
 
 export const metadata: Metadata = {
-  title: 'Deposit Defense | Your rental evidence vault',
-  description: 'Organize move-in photos, property evidence, and rental leases in one place.',
+  title: "Tenant Shield | A clearer path to your deposit",
+  description:
+    "Organize your California rental evidence, review deposit deductions, and prepare your next step. Information, not legal advice.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

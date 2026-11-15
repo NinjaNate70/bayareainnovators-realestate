@@ -1,0 +1,540 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Check,
+  FolderOpen,
+  KeyRound,
+  LogOut,
+  Mail,
+  Trash2,
+  UserRound,
+} from "lucide-react";
+import { getBackend } from "@/lib/backend";
+import { passwordError, validEmail } from "@/lib/auth/validation";
+import { flushCases } from "@/lib/cases";
+import { Shell } from "@/components/shell";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
+import { useAuth } from "./provider";
+import { AuthFooter, TrustLine } from "./frame";
+import {
+  Field,
+  FormError,
+  PasswordField,
+  Requirements,
+  SubmitButton,
+  useAuthForm,
+} from "./form";
+import type { User } from "@/types/backend";
+import {
+  bufferedCase,
+  forgetOwner,
+  rememberProfile,
+  settleProfile,
+  restorePosition,
+} from "@/lib/auth/drafts";
+import { forgetUploads } from "@/lib/cases";
+export function AccountSettings() {
+  const { session, signOut } = useAuth(),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const latch = useRef(false);
+  const [draft, setDraft] = useState<{ name: string; email: string } | null>(
+      null,
+    ),
+    [ready, setReady] = useState(false);
+  const userId = session?.user.id;
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    void getBackend()
+      .data.getDraft("account-profile")
+      .then((r) => {
+        if (!alive) return;
+        const checkpoint = bufferedCase("account-profile", userId) ?? r.data;
+        if (checkpoint && "name" in checkpoint.payload) {
+          setDraft(checkpoint.payload);
+          rememberProfile(checkpoint.payload);
+          restorePosition(checkpoint);
+        }
+        setReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+  if (!session) return null;
+  if (!ready)
+    return (
+      <Shell>
+        <p role="status">Opening your account settings…</p>
+      </Shell>
+    );
+  async function leave() {
+    if (latch.current) return;
+    latch.current = true;
+    setBusy(true);
+    try {
+      await flushCases();
+      await signOut();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "We couldn't sign you out. Your work is still here.",
+      );
+    } finally {
+      setBusy(false);
+      latch.current = false;
+    }
+  }
+  return (
+    <Shell>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">YOUR WORKSPACE, YOUR CHOICE</p>
+          <h1>Account settings</h1>
+          <p>Keep your details up to date. Stay in control of your case.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/case/new">Start a case</Link>
+        </Button>
+      </div>
+      <FormError message={error} />
+      <div className="account-settings-grid">
+        <div className="stack">
+          <Profile user={session.user} initialName={draft?.name} />
+          <EmailSettings user={session.user} initialEmail={draft?.email} />
+          <PasswordSettings />
+        </div>
+        <aside className="stack">
+          <Card>
+            <div className="auth-status-icon">
+              <UserRound aria-hidden="true" />
+            </div>
+            <h2 style={{ marginTop: 16 }}>Your local account</h2>
+            <p className="small muted">
+              Your account and original documents stay in this browser. They
+              won’t sync to another device in this demo.
+            </p>
+            <p className="small muted">
+              Local sign-in is for development and demonstrations. It isn’t
+              production account security.
+            </p>
+            <TrustLine />
+          </Card>
+          <LegacyImport />
+          <Card>
+            <h2>Done for now?</h2>
+            <p className="small muted">
+              Your saved cases will be here when you sign back in.
+            </p>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => void leave()}
+            >
+              <LogOut size={18} aria-hidden="true" />
+              {busy ? "Signing out…" : "Sign out"}
+            </Button>
+          </Card>
+          <DeleteAccount />
+        </aside>
+      </div>
+      <AuthFooter />
+    </Shell>
+  );
+}
+function Profile({ user, initialName }: { user: User; initialName?: string }) {
+  const { refresh } = useAuth(),
+    [status, setStatus] = useState("");
+  const form = useAuthForm(
+    (v) => ({
+      name: !v.name?.trim()
+        ? "Enter your name."
+        : v.name.trim().length > 100
+          ? "Use no more than 100 characters for your name."
+          : "",
+    }),
+    { name: initialName ?? user.user_metadata.name },
+  );
+  async function save() {
+    const r = await getBackend().auth.updateUser({
+      data: { name: form.values.name },
+    });
+    if (r.error) {
+      form.responseError(r.error);
+      return;
+    }
+    if (r.data) await settleProfile(r.data.user);
+    await refresh();
+    setStatus("Your name is updated.");
+  }
+  return (
+    <Card>
+      <h2>
+        <UserRound size={21} aria-hidden="true" /> Your details
+      </h2>
+      <p className="muted small">The name you use in your workspace.</p>
+      <form
+        noValidate
+        className="auth-form"
+        aria-busy={form.busy}
+        onSubmit={(e) => void form.submit(e, save)}
+      >
+        <FormError message={form.error} />
+        <Field
+          label="Name"
+          id="account-name"
+          name="name"
+          autoComplete="name"
+          value={form.values.name ?? ""}
+          onChange={(e) => {
+            form.setValue("name", e.target.value);
+            rememberProfile({ name: e.target.value });
+            setStatus("");
+          }}
+          onBlur={() => form.blur("name")}
+          error={form.errors.name}
+        />
+        <SubmitButton busy={form.busy} wait={form.wait} loading="Saving name…">
+          Save name
+        </SubmitButton>
+        <p className="save-message" role="status">
+          {status && (
+            <>
+              <Check size={17} aria-hidden="true" /> {status}
+            </>
+          )}
+        </p>
+      </form>
+    </Card>
+  );
+}
+function EmailSettings({
+  user,
+  initialEmail,
+}: {
+  user: User;
+  initialEmail?: string;
+}) {
+  const router = useRouter();
+  const form = useAuthForm(
+    (v) => ({
+      email: !v.email
+        ? "Enter your email address."
+        : !validEmail(v.email.trim())
+          ? "Enter an email address like name@example.com."
+          : "",
+      currentPassword: !v.currentPassword
+        ? "Enter your current password to change your email."
+        : "",
+    }),
+    { email: initialEmail ?? user.email },
+  );
+  async function save() {
+    const r = await getBackend().auth.updateUser(
+      { email: form.values.email },
+      { currentPassword: form.values.currentPassword },
+    );
+    if (r.error) {
+      form.responseError(r.error);
+      return;
+    }
+    router.push(`/check-email?flow=${r.data?.flow_id}`);
+  }
+  return (
+    <Card>
+      <h2>
+        <Mail size={21} aria-hidden="true" /> Email address
+      </h2>
+      <p className="muted small">
+        Current sign-in email:{" "}
+        <strong className="break-text">{user.email}</strong>. It keeps working
+        until you verify the new address.
+      </p>
+      <form
+        noValidate
+        className="auth-form"
+        aria-busy={form.busy}
+        onSubmit={(e) => void form.submit(e, save)}
+      >
+        <FormError message={form.error} />
+        <Field
+          label="New email"
+          id="new-email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={form.values.email ?? ""}
+          onChange={(e) => {
+            form.setValue("email", e.target.value);
+            rememberProfile({ email: e.target.value });
+          }}
+          onBlur={() => form.blur("email")}
+          error={form.errors.email}
+        />
+        <PasswordField
+          label="Current password"
+          id="email-current-password"
+          name="currentPassword"
+          autoComplete="current-password"
+          value={form.values.currentPassword ?? ""}
+          onChange={(e) => form.setValue("currentPassword", e.target.value)}
+          onBlur={() => form.blur("currentPassword")}
+          error={form.errors.currentPassword}
+        />
+        <SubmitButton busy={form.busy} wait={form.wait} loading="Sending link…">
+          Send verification link
+        </SubmitButton>
+      </form>
+    </Card>
+  );
+}
+function PasswordSettings() {
+  const { notify } = useAuth();
+  const router = useRouter();
+  const form = useAuthForm((v) => ({
+    currentPassword: !v.currentPassword ? "Enter your current password." : "",
+    password: passwordError(v.password ?? ""),
+    confirm:
+      v.confirm !== v.password || !v.confirm
+        ? "Enter the same new password in both fields."
+        : "",
+  }));
+  async function save() {
+    const r = await getBackend().auth.updateUser(
+      { password: form.values.password },
+      { currentPassword: form.values.currentPassword },
+    );
+    if (r.error) {
+      form.responseError(r.error);
+      return;
+    }
+    form.setValues({});
+    notify("Your password is updated. Sign in with your new password.");
+    router.replace("/login?passwordUpdated=1");
+  }
+  return (
+    <Card>
+      <h2>
+        <KeyRound size={21} aria-hidden="true" /> Change password
+      </h2>
+      <p className="small muted">
+        After this change, sign in again on each open session.
+      </p>
+      <form
+        noValidate
+        className="auth-form"
+        aria-busy={form.busy}
+        onSubmit={(e) => void form.submit(e, save)}
+      >
+        <FormError message={form.error} />
+        <PasswordField
+          label="Current password"
+          id="current-password"
+          name="currentPassword"
+          autoComplete="current-password"
+          value={form.values.currentPassword ?? ""}
+          onChange={(e) => form.setValue("currentPassword", e.target.value)}
+          onBlur={() => form.blur("currentPassword")}
+          error={form.errors.currentPassword}
+        />
+        <PasswordField
+          label="New password"
+          id="new-password"
+          name="password"
+          autoComplete="new-password"
+          value={form.values.password ?? ""}
+          onChange={(e) => form.setValue("password", e.target.value)}
+          onBlur={() => form.blur("password")}
+          error={form.errors.password}
+        />
+        <Requirements password={form.values.password ?? ""} />
+        <PasswordField
+          label="Confirm new password"
+          id="confirm-password"
+          name="confirm"
+          autoComplete="new-password"
+          value={form.values.confirm ?? ""}
+          onChange={(e) => form.setValue("confirm", e.target.value)}
+          onBlur={() => form.blur("confirm")}
+          error={form.errors.confirm}
+        />
+        <SubmitButton
+          busy={form.busy}
+          wait={form.wait}
+          loading="Updating password…"
+        >
+          Update password
+        </SubmitButton>
+      </form>
+    </Card>
+  );
+}
+function DeleteAccount() {
+  const { session, notify } = useAuth();
+  const [open, setOpen] = useState(false),
+    router = useRouter();
+  const form = useAuthForm((v) => ({
+    currentPassword: !v.currentPassword ? "Enter your current password." : "",
+    confirmation:
+      v.confirmation !== "DELETE" ? "Type DELETE exactly to confirm." : "",
+  }));
+  async function remove() {
+    const r = await getBackend().auth.deleteUser({
+      confirmation: form.values.confirmation,
+      currentPassword: form.values.currentPassword,
+    });
+    if (r.error) {
+      form.responseError(r.error);
+      return;
+    }
+    getBackend().storage.revokeUrls();
+    if (session) {
+      forgetOwner(session.user.id);
+      forgetUploads(session.user.id);
+    }
+    setOpen(false);
+    notify(
+      "Your account and all its case data have been deleted from this browser.",
+    );
+    router.replace("/login?accountDeleted=1");
+  }
+  return (
+    <Card>
+      <h2>Delete account</h2>
+      <p className="small muted">
+        Permanently remove this account and all its case details, drafts and
+        original files from this browser.
+      </p>
+      <Sheet
+        title="Delete your account?"
+        description="This removes all case data for this account. You cannot undo this."
+        open={open}
+        onOpenChange={(value) => {
+          if (!form.busy) {
+            setOpen(value);
+            if (!value) form.reset();
+          }
+        }}
+        trigger={
+          <Button variant="outline">
+            <Trash2 size={18} aria-hidden="true" />
+            Delete account and case data
+          </Button>
+        }
+      >
+        <form
+          noValidate
+          className="auth-form delete-account-form"
+          aria-busy={form.busy}
+          onSubmit={(e) => void form.submit(e, remove)}
+        >
+          <FormError message={form.error} />
+          <p>
+            All your cases, uploaded documents, photos, letters and drafts will
+            be removed. Other accounts in this browser are unaffected.
+          </p>
+          <PasswordField
+            label="Current password"
+            id="delete-password"
+            name="currentPassword"
+            autoComplete="current-password"
+            value={form.values.currentPassword ?? ""}
+            onChange={(e) => form.setValue("currentPassword", e.target.value)}
+            onBlur={() => form.blur("currentPassword")}
+            error={form.errors.currentPassword}
+          />
+          <Field
+            label="Type DELETE to confirm"
+            id="delete-confirmation"
+            name="confirmation"
+            autoComplete="off"
+            spellCheck={false}
+            value={form.values.confirmation ?? ""}
+            onChange={(e) => form.setValue("confirmation", e.target.value)}
+            onBlur={() => form.blur("confirmation")}
+            error={form.errors.confirmation}
+          />
+          <SubmitButton
+            busy={form.busy}
+            wait={form.wait}
+            loading="Deleting account…"
+          >
+            Delete my account and case data
+          </SubmitButton>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={form.busy}
+            onClick={() => {
+              form.reset();
+              setOpen(false);
+            }}
+          >
+            Keep my account
+          </Button>
+        </form>
+      </Sheet>
+    </Card>
+  );
+}
+function LegacyImport() {
+  const [count, setCount] = useState(0),
+    [status, setStatus] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void getBackend()
+      .data.legacyStatus()
+      .then((r) => setCount(r.data ?? 0));
+  }, []);
+  async function importCases() {
+    if (busy) return;
+    setBusy(true);
+    const r = await getBackend().data.importLegacy();
+    setBusy(false);
+    if (r.error) {
+      setError(r.error.message);
+      return;
+    }
+    setCount(0);
+    setStatus(
+      `${r.data} older case${r.data === 1 ? "" : "s"} imported. Open My cases to continue.`,
+    );
+  }
+  if (!count && !status) return null;
+  return (
+    <Card>
+      <h2>
+        <FolderOpen size={21} aria-hidden="true" /> Older browser cases
+      </h2>
+      <FormError message={error} />
+      {count > 0 ? (
+        <>
+          <p className="small muted">
+            {count} unassigned case{count === 1 ? "" : "s"} from the earlier
+            demo {count === 1 ? "is" : "are"} preserved. Only import them if
+            they belong to you. Originals are retained.
+          </p>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void importCases()}
+          >
+            {busy ? "Importing…" : "Import into this account"}
+          </Button>
+        </>
+      ) : (
+        <p role="status">{status}</p>
+      )}
+    </Card>
+  );
+}
