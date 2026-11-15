@@ -1,12 +1,15 @@
 "use client";
 import { useState } from "react";
-import { Camera, Plus, ArrowLeft, ArrowRight, ScanSearch } from "lucide-react";
-import type { RentalCase } from "@/types/case";
+import { Camera, Plus, ArrowLeft, ArrowRight, ScanSearch, LoaderCircle } from "lucide-react";
+import type { PhotoComparison, RentalCase } from "@/types/case";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ActionBar } from "@/components/shell";
 import { SourceChip, EvidencePreview } from "@/components/evidence";
 import { UploadZone } from "@/components/upload-zone";
+import { ComparisonMarks, ComparisonResult } from "@/components/photo-comparison";
+import { comparePhotos } from "@/lib/cases";
+import { hosted } from "@/lib/backend";
 
 export function PhotosTab({
   data,
@@ -24,6 +27,13 @@ export function PhotosTab({
   const [chargeIndex, setChargeIndex] = useState(0);
   const [adding, setAdding] = useState(false);
   const [marks, setMarks] = useState(false);
+  // AI comparison of the chosen pair: which charge is being compared, the
+  // last error, whether the changes are outlined, and the move-out photo size.
+  const [comparing, setComparing] = useState<string | null>(null);
+  const [compareError, setCompareError] = useState("");
+  const [outlines, setOutlines] = useState(true);
+  const [activeMark, setActiveMark] = useState<number | null>(null);
+  const [afterSize, setAfterSize] = useState<{ width: number; height: number } | null>(null);
   const photos = data.evidence.filter(
     (e) => e.kind === "before" || e.kind === "after",
   );
@@ -37,10 +47,39 @@ export function PhotosTab({
     charge?.id === "C01" &&
     before === "P01" &&
     after === "P02";
-  // TODO(api): Load saved per-charge photo pairings and evidence-cited vision observations.
+  // A saved comparison counts only while the same two photos are chosen.
+  const analysis =
+    pair?.analysis && pair.analysis.before === before && pair.analysis.after === after
+      ? pair.analysis
+      : null;
+  const canCompare = hosted && !data.demo;
+  async function compare() {
+    if (!charge || !before || !after) return;
+    const chargeId = charge.id;
+    setComparing(chargeId);
+    setCompareError("");
+    try {
+      const result: PhotoComparison = await comparePhotos(data, chargeId, before, after);
+      onUpdate((previous) => ({
+        photoPairs: {
+          ...previous.photoPairs,
+          [chargeId]: { before: result.before, after: result.after, analysis: result },
+        },
+        stale: true,
+      }));
+      setOutlines(true);
+      setActiveMark(null);
+    } catch (e) {
+      setCompareError(e instanceof Error ? e.message : "The photo comparison couldn’t finish. Try again.");
+    } finally {
+      setComparing(null);
+    }
+  }
   function changeCharge(i: number) {
     setChargeIndex(i);
     setMarks(false);
+    setCompareError("");
+    setActiveMark(null);
   }
   return (
     <>
@@ -177,6 +216,8 @@ export function PhotosTab({
                         stale: true,
                       }));
                     setMarks(false);
+                    setCompareError("");
+                    setActiveMark(null);
                   }}
                 >
                   <option value="">Choose a matching photo</option>
@@ -195,6 +236,17 @@ export function PhotosTab({
                       key={side.selected}
                       data={data}
                       evidenceId={side.selected}
+                      onImageSize={
+                        side.kind === "after"
+                          ? (width, height) =>
+                              // Only a new size re-renders; the same one is ignored.
+                              setAfterSize((size) =>
+                                size?.width === width && size.height === height
+                                  ? size
+                                  : { width, height },
+                              )
+                          : undefined
+                      }
                     />
                   ) : (
                     <div className="photo-missing">
@@ -204,6 +256,13 @@ export function PhotosTab({
                         {allowUpload ? "Choose a photo above or add one." : "Choose a sample photo above."}
                       </span>
                     </div>
+                  )}
+                  {side.kind === "after" && analysis && outlines && side.selected && (
+                    <ComparisonMarks
+                      analysis={analysis}
+                      size={afterSize}
+                      active={activeMark}
+                    />
                   )}
                   {marks && isExamplePair && side.kind === "after" && (
                     <span
@@ -220,42 +279,122 @@ export function PhotosTab({
               </Card>
             ))}
           </div>
+          {isExamplePair ? (
           <Card className="photo-observation">
-            <span className="observation-icon">
-              <ScanSearch size={24} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="eyebrow">
-                {isExamplePair
-                  ? "EXAMPLE PHOTO OBSERVATION"
-                  : "COMPARISON NOTES"}
-              </p>
-              <h3>
-                {isExamplePair
-                  ? "Possible ordinary wear"
-                  : "More information is needed"}
-              </h3>
-              <p>
-                {isExamplePair
-                  ? "Small surface marks appear in the move-out illustration. This example alone does not establish damage or a repair cost."
-                  : "Choose comparable views for this charge. Automatic photo analysis is not connected, so no conclusion or repair estimate is shown."}
-              </p>
-              <div className="source-list">
-                {[before, after].filter(Boolean).map((id) => (
-                  <SourceChip key={id} id={id} data={data} />
-                ))}
+              <span className="observation-icon">
+                <ScanSearch size={24} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="eyebrow">
+                  {isExamplePair
+                    ? "EXAMPLE PHOTO OBSERVATION"
+                    : "COMPARISON NOTES"}
+                </p>
+                <h3>
+                  {isExamplePair
+                    ? "Possible ordinary wear"
+                    : "More information is needed"}
+                </h3>
+                <p>
+                  {isExamplePair
+                    ? "Small surface marks appear in the move-out illustration. This example alone does not establish damage or a repair cost."
+                    : "Choose comparable views for this charge. Automatic photo analysis is not connected, so no conclusion or repair estimate is shown."}
+                </p>
+                <div className="source-list">
+                  {[before, after].filter(Boolean).map((id) => (
+                    <SourceChip key={id} id={id} data={data} />
+                  ))}
+                </div>
+                {isExamplePair && (
+                  <Button
+                    variant="ghost"
+                    aria-pressed={marks}
+                    onClick={() => setMarks(!marks)}
+                  >
+                    {marks ? "Hide example marks" : "Highlight example marks"}
+                  </Button>
+                )}
               </div>
-              {isExamplePair && (
-                <Button
-                  variant="ghost"
-                  aria-pressed={marks}
-                  onClick={() => setMarks(!marks)}
-                >
-                  {marks ? "Hide example marks" : "Highlight example marks"}
-                </Button>
-              )}
-            </div>
-          </Card>
+            </Card>
+          ) : (
+            <Card className="photo-observation" aria-busy={comparing === charge?.id}>
+              <span className="observation-icon">
+                <ScanSearch size={24} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="eyebrow">AI PHOTO COMPARISON</p>
+                {analysis ? (
+                  <ComparisonResult
+                    analysis={analysis}
+                    onShowMark={(i) => {
+                      setOutlines(true);
+                      setActiveMark(i);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <h3>See what changed</h3>
+                    <p>
+                      {!before || !after
+                        ? "Choose a move-in and a move-out photo of the same spot for this charge, then compare them."
+                        : canCompare
+                          ? "Claude compares these two photos for this charge, lists each visible difference, and marks where it is on the move-out photo. Your original photos aren’t changed."
+                          : "Photo analysis runs in the hosted app with a signed-in account. No conclusion or repair estimate is shown here."}
+                    </p>
+                  </>
+                )}
+                <div className="source-list">
+                  {[before, after].filter(Boolean).map((id) => (
+                    <SourceChip key={id} id={id} data={data} />
+                  ))}
+                </div>
+                {compareError && (
+                  <p role="alert" className="inline-error">
+                    {compareError}
+                  </p>
+                )}
+                {canCompare && (
+                  <div className="comparison-actions">
+                    <Button
+                      variant={analysis ? "outline" : undefined}
+                      disabled={!before || !after || comparing !== null}
+                      onClick={compare}
+                    >
+                      {comparing === charge?.id ? (
+                        <>
+                          <LoaderCircle size={18} className="spin" aria-hidden="true" />
+                          Comparing… up to a minute
+                        </>
+                      ) : (
+                        <>
+                          <ScanSearch size={18} aria-hidden="true" />
+                          {analysis ? "Compare again" : "Compare these photos"}
+                        </>
+                      )}
+                    </Button>
+                    {analysis?.differences.some((item) => item.box) && (
+                      <Button
+                        variant="ghost"
+                        aria-pressed={outlines}
+                        onClick={() => {
+                          setOutlines(!outlines);
+                          setActiveMark(null);
+                        }}
+                      >
+                        {outlines ? "Hide marked areas" : "Show marked areas"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {canCompare && !analysis && before && after && (
+                  <p className="small muted">
+                    The two photos are sent to Anthropic (or Google, if Claude is
+                    unavailable) for analysis.
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
           <div className="split-row" style={{ marginTop: 24 }}>
             <Button
               variant="outline"

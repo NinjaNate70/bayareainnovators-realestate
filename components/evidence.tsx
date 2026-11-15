@@ -153,9 +153,12 @@ export function SourceChip({ id, data }: { id: string; data: RentalCase }) {
 export function EvidencePreview({
   data,
   evidenceId,
+  onImageSize,
 }: {
   data: RentalCase;
   evidenceId: string;
+  // Called with a photo's natural size once it loads, for drawing over it.
+  onImageSize?: (width: number, height: number) => void;
 }) {
   const file = data.evidence.find((e) => e.id === evidenceId);
   const [url, setUrl] = useState(file?.url ?? "");
@@ -193,6 +196,17 @@ export function EvidencePreview({
             className="evidence-image"
             src={url}
             alt={`${file.name} · ${evidenceId}`}
+            ref={(img) => {
+              // A photo can finish loading before the load handler is attached.
+              if (img?.complete && img.naturalWidth)
+                onImageSize?.(img.naturalWidth, img.naturalHeight);
+            }}
+            onLoad={(e) =>
+              onImageSize?.(
+                e.currentTarget.naturalWidth,
+                e.currentTarget.naturalHeight,
+              )
+            }
           />
         ) : (
           <a className="text-link" href={url} target="_blank" rel="noreferrer">

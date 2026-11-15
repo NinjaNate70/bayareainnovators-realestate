@@ -44,7 +44,7 @@ type StoredCase = {
   situation_text?: string | null;
   charges: { source_id?: string; name?: string; room?: string; amount_cents?: number }[];
   evidence: { source_id?: string; name?: string; kind?: string; type?: string; path?: string; bucket?: string }[];
-  photo_pairs: Record<string, { before?: string; after?: string }> | null;
+  photo_pairs: Record<string, { before?: string; after?: string; analysis?: { before?: string; after?: string; finding?: string; summary?: string } }> | null;
 };
 
 // Names the service and status only (for example "Gemini request failed (404)"),
@@ -188,6 +188,12 @@ export async function POST(request: Request) {
   const pairs: AuditInput['photoPairs'] = {};
   for (const [chargeId, pair] of Object.entries(row.photo_pairs ?? {})) {
     if (typeof pair?.before === 'string' && typeof pair?.after === 'string') pairs[chargeId] = { before: pair.before, after: pair.after };
+    // A comparison the renter ran on the Photos tab, if it is for this same pair.
+    const analysis = pair?.analysis;
+    const charge = charges.find((item) => item.id === chargeId);
+    if (charge && analysis && analysis.before === pair.before && analysis.after === pair.after && typeof analysis.summary === 'string') {
+      inspections.unshift({ room: charge.room, spot: `${charge.name} (${chargeId}, photos ${pair.before} and ${pair.after})`, category: String(analysis.finding ?? 'unclear').slice(0, 20), summary: analysis.summary.slice(0, 500) });
+    }
   }
 
   try {

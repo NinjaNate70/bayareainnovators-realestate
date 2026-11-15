@@ -1,4 +1,4 @@
-import type { Evidence, RentalCase } from "@/types/case";
+import type { Evidence, PhotoComparison, RentalCase } from "@/types/case";
 import { mergeCaseLibraryEvidence } from "@/lib/document-library";
 import { getBackend } from "@/lib/backend";
 import { fromRow, toRow } from "@/lib/db/mapping";
@@ -386,4 +386,39 @@ export async function readLetter(value: RentalCase): Promise<LetterReading> {
       result.error ?? "We couldn’t read your letter. Enter the charges by hand.",
     );
   return result as LetterReading;
+}
+
+// Has the server compare the move-in and move-out photo chosen for one charge
+// and describe what visibly changed. Throws with a message fit to show the renter.
+export async function comparePhotos(
+  value: RentalCase,
+  chargeId: string,
+  beforeId: string,
+  afterId: string,
+): Promise<PhotoComparison> {
+  await saveCase(value);
+  const session = unwrap(await getBackend().auth.getSession()).session;
+  if (!session) throw new Error("Sign in to keep going. Your case is saved.");
+  const response = await fetch("/api/cases/compare-photos", {
+    method: "POST",
+    signal: AbortSignal.timeout(75_000),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ caseId: value.id, chargeId, beforeId, afterId, consent: true }),
+  }).catch((cause) => {
+    throw new Error(
+      cause instanceof Error && cause.name === "TimeoutError"
+        ? "The comparison took too long. Try again."
+        : "We couldn’t reach the photo analysis service. Check your connection and try again.",
+    );
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    comparison?: PhotoComparison;
+    error?: string;
+  };
+  if (!response.ok || !result.comparison)
+    throw new Error(result.error ?? "The photo comparison couldn’t finish. Try again.");
+  return result.comparison;
 }
