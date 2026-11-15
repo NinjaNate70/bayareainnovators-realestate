@@ -28,8 +28,18 @@ const fromDb = (row: StoredCase): CaseRow => ({
   photo_pairs: row.photo_pairs ?? undefined,
 });
 const date = (value: string) => (day.test(value) ? value : null);
-const toDb = (input: CaseInput) => ({
+// The renter's notes need the situation_text column, added by a later
+// migration. A project that hasn't run it yet must still save cases, so the
+// field is left out there and the wizard says the notes can't be kept yet.
+let notesColumnMissing = false;
+export const notesUnavailable = () => notesColumnMissing;
+const lacksNotesColumn = (error: PostgrestError | null) =>
+  !!error &&
+  ["PGRST204", "42703"].includes(error.code) &&
+  error.message.includes("situation_text");
+const toDb = ({ situation_text, ...input }: CaseInput) => ({
   ...input,
+  ...(notesColumnMissing ? {} : { situation_text: situation_text ?? "" }),
   move_out_date: date(input.move_out_date),
   letter_received_date: date(input.letter_received_date),
   reply_by_date: date(input.reply_by_date),
@@ -102,10 +112,16 @@ export const supabaseData: DataClient = {
     remote(async () => {
       validateCase(input);
       const user = await requireUser();
-      const { data, error } = await cases()
-        .insert({ ...toDb(input), user_id: user.id })
-        .select()
-        .single<StoredCase>();
+      const insert = () =>
+        cases()
+          .insert({ ...toDb(input), user_id: user.id })
+          .select()
+          .single<StoredCase>();
+      let { data, error } = await insert();
+      if (lacksNotesColumn(error)) {
+        notesColumnMissing = true;
+        ({ data, error } = await insert());
+      }
       if (error) dbFail(error);
       return fromDb(data!);
     }),
@@ -117,13 +133,19 @@ export const supabaseData: DataClient = {
       if (!row || input.id !== row.id) return fail("not_found", unavailable);
       // The database bumps revision and updated_at on every update, so matching
       // the revision here makes a stale write change nothing.
-      const { data, error } = await cases()
-        .update(toDb(input))
-        .eq("id", row.id)
-        .eq("user_id", user.id)
-        .eq("revision", expectedRevision ?? row.revision)
-        .select()
-        .maybeSingle<StoredCase>();
+      const update = () =>
+        cases()
+          .update(toDb(input))
+          .eq("id", row.id)
+          .eq("user_id", user.id)
+          .eq("revision", expectedRevision ?? row.revision)
+          .select()
+          .maybeSingle<StoredCase>();
+      let { data, error } = await update();
+      if (lacksNotesColumn(error)) {
+        notesColumnMissing = true;
+        ({ data, error } = await update());
+      }
       if (error) dbFail(error);
       if (!data)
         return fail(

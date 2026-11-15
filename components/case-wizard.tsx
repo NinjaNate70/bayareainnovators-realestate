@@ -26,6 +26,7 @@ import {
 } from "@/lib/cases";
 import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
+import { notesUnavailable } from "@/lib/db/supabase";
 import { unwrap } from "@/lib/cases";
 import { rememberCase } from "@/lib/auth/drafts";
 import type { Evidence, RentalCase } from "@/types/case";
@@ -135,6 +136,7 @@ export function CaseWizard() {
         "returned",
         "charges",
         "evidence",
+        "notes",
       ].includes(key),
     );
     setData((d) => {
@@ -749,6 +751,39 @@ export function CaseWizard() {
                         Add charge
                       </Button>
                     </div>
+                    <label className="field-full notes-field" htmlFor="situation">
+                      <span className="field-label">
+                        Anything else about your situation? (optional)
+                      </span>
+                      <span id="situation-hint" className="small muted">
+                        Explain what the documents don’t show. For example:
+                        roommates and who paid the deposit, anything you agreed
+                        with your landlord, repairs you asked for, or the
+                        condition at move-in.
+                        {hosted
+                          ? " The audit and the assistant take this into account as your own account of events."
+                          : ""}
+                      </span>
+                      <textarea
+                        id="situation"
+                        rows={5}
+                        maxLength={4000}
+                        aria-describedby="situation-hint situation-count"
+                        value={data.notes ?? ""}
+                        onChange={(e) => patch({ notes: e.target.value })}
+                      />
+                      <span id="situation-count" className="small muted">
+                        {(data.notes ?? "").length.toLocaleString()} of 4,000
+                        characters
+                      </span>
+                      {hosted && !!data.notes && notesUnavailable() && (
+                        <span className="inline-error" role="status">
+                          These notes can’t be saved yet. Your project admin
+                          needs to run the case situation migration in Supabase.
+                          The rest of your case is saved.
+                        </span>
+                      )}
+                    </label>
                   </div>
                 )}
                 {step === 2 && (
@@ -809,6 +844,20 @@ export function CaseWizard() {
                       </div>
                       <FileCheck2 size={24} aria-hidden="true" />
                     </div>
+                    {!!data.notes?.trim() && (
+                      <div className="review-item split-row">
+                        <div>
+                          <strong>Your notes</strong>
+                          <p className="small muted break-text">
+                            {data.notes.trim().slice(0, 240)}
+                            {data.notes.trim().length > 240 ? "…" : ""}
+                          </p>
+                        </div>
+                        <Button variant="ghost" onClick={() => navigate(1)}>
+                          Edit notes
+                        </Button>
+                      </div>
+                    )}
                     <div className="review-item">
                       <strong>{data.evidence.length} evidence files</strong>
                       <ul>

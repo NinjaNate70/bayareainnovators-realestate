@@ -2698,3 +2698,14 @@ textarea[aria-invalid="true"] {
 .assistant-check .assistant-meta {
   margin-top: 0;
 }
+
+/* Wizard: the renter's own notes about their situation */
+.notes-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notes-field textarea {
+  width: 100%;
+  min-height: 120px;
+}

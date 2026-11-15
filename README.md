@@ -98,6 +98,14 @@ The wizard then opens the Details step with those filled in and asks the renter 
 
 It uses the same key as the audit (`ANTHROPIC_API_KEY`, with `GEMINI_API_KEY` as an optional stand-in), reads up to four documents (about 12 MB, PDF, JPG or PNG), and usually takes 10 to 30 seconds.
 
+## Let renters explain their situation
+
+The wizard's Details step ends with a text box, **Anything else about your situation?**, for what the documents don't show: roommates and who paid the deposit, anything agreed with the landlord, repairs requested, the condition at move-in. It holds up to 4,000 characters and appears again on the Review step.
+
+Run the [case situation migration](supabase/migrations/20261115000200_case_situation.sql) once in the Supabase SQL Editor to add the column that stores it. Until then cases still save, and the box tells the renter their notes can't be kept yet.
+
+The audit and the case assistant read the notes as the renter's own account. They use them to understand the case and to ask for the right proof, such as the text message a renter says their landlord sent. They are told the notes are unverified: a charge's status never changes on the renter's word alone, and the app's own check still turns any finding with no evidence file behind it into **Need more info**. Changing the notes on an audited case marks it for a fresh audit.
+
 ## Run the charge-by-charge audit
 
 With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same key as the case assistant.

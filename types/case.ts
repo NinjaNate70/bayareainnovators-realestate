@@ -47,4 +47,7 @@ export interface RentalCase {
   replyBy: string;
   incoming: string;
   reply: string;
+  // The renter's own account of anything the documents don't show: roommates,
+  // agreements with the landlord, special circumstances. Up to 4,000 characters.
+  notes?: string;
 }

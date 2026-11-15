@@ -37,6 +37,7 @@ type StoredCase = {
   letter_received_date: string | null;
   deposit_cents: number;
   returned_cents: number;
+  situation_text?: string | null;
   charges: { source_id?: string; name?: string; room?: string; amount_cents?: number }[];
   evidence: { source_id?: string; name?: string; kind?: string; type?: string; path?: string; bucket?: string }[];
   photo_pairs: Record<string, { before?: string; after?: string }> | null;
@@ -90,7 +91,8 @@ export async function POST(request: Request) {
   if (!allow(userId)) return respond('An audit was just run. Wait a minute, then try again.', 429, 'rate_limited');
 
   const found = await renter.from('cases')
-    .select('address, move_out_date, letter_received_date, deposit_cents, returned_cents, charges, evidence, photo_pairs')
+    // Every column, so a project without the newer notes column still works.
+    .select('*')
     .eq('id', caseId).eq('user_id', userId).maybeSingle<StoredCase>();
   if (found.error) return respond('Could not open your case. Try again in a moment.', 503);
   if (!found.data) return respond('This case is unavailable.', 404, 'not_found');
@@ -168,6 +170,7 @@ export async function POST(request: Request) {
           letter_received_date: date(row.letter_received_date),
           deposit_paid: Math.round(row.deposit_cents) / 100,
           amount_returned: Math.round(row.returned_cents) / 100,
+          renter_account: String(row.situation_text ?? '').slice(0, 4000),
         },
         charges, files, skipped, photoPairs: pairs, inspections,
       },

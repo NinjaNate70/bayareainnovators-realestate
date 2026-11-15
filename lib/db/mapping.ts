@@ -20,6 +20,7 @@ export function toRow(value: RentalCase, previous?: CaseRow): CaseInput {
     reply_by_date: value.replyBy,
     incoming_text: value.incoming,
     reply_text: value.reply,
+    situation_text: (value.notes ?? "").slice(0, 4000),
     charges: value.charges.map(({ id, amount, low, high, sources, ...c }) => ({
       ...c,
       id:
@@ -63,6 +64,7 @@ export function fromRow(row: CaseRow): RentalCase {
     replyBy: row.reply_by_date,
     incoming: row.incoming_text,
     reply: row.reply_text,
+    notes: row.situation_text ?? "",
     charges: row.charges.map(
       ({
         id,
