@@ -16,7 +16,8 @@ import { getBackend } from "@/lib/backend";
 import { passwordError, safeReturnTo, validEmail } from "@/lib/auth/validation";
 import { useAuth } from "./provider";
 import { recoveryDestination } from "@/lib/auth/drafts";
-import { TERMS_VERSION } from "@/lib/auth/terms";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/auth/terms";
+import { TermsAgreementText } from "./terms-agreement";
 export function Signup() {
   const router = useRouter(),
     search = useSearchParams(),
@@ -34,7 +35,9 @@ export function Signup() {
         : "",
     password: passwordError(v.password ?? ""),
     consent:
-      v.consent !== "yes" ? "Agree to the Terms of Service to continue." : "",
+      v.consent !== "yes"
+        ? "Agree to the Terms of Service and Privacy Policy to continue."
+        : "",
   }));
   useEffect(() => {
     const flow = search.get("change");
@@ -65,7 +68,7 @@ export function Signup() {
           name: form.values.name,
           terms_version: TERMS_VERSION,
           terms_accepted_at: acceptedAt,
-          privacy_version: "review-draft-v1",
+          privacy_version: PRIVACY_VERSION,
           consented_at: acceptedAt,
         },
         emailRedirectTo: safeReturnTo(search.get("returnTo")) ?? undefined,
@@ -145,19 +148,9 @@ export function Signup() {
               }
             />
             <span>
-              I agree to the{" "}
-              <Link href="/terms" target="_blank" rel="noreferrer">
-                Terms of Service
-              </Link>
-              , including a 10% success fee (max $75) only if Tenant Shield
-              helps me recover money.
+              <TermsAgreementText />
             </span>
           </label>
-          <div className="auth-policy-links">
-            <Link href="/privacy" target="_blank" rel="noreferrer">
-              Read Privacy Policy
-            </Link>
-          </div>
           <span className="field-feedback" aria-live="polite">
             {form.errors.consent && (
               <span id="consent-error">Fix this: {form.errors.consent}</span>

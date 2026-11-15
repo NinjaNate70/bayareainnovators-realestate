@@ -4,6 +4,8 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { saveInspectionPhoto, validateInspectionImage } from '@/lib/inspection-photos';
 import { supabase as client } from '@/lib/supabase/client';
+import { PRIVACY_VERSION, TERMS_VERSION } from '@/lib/auth/terms';
+import { TermsAgreementText } from '@/components/auth/terms-agreement';
 import { ComparePhotos } from './compare-photos';
 import { MoveOutAudit } from './move-out-audit';
 import styles from './inspections.module.css';
@@ -44,12 +46,17 @@ export function Inspections() {
 
 function SignIn({ supabase }: { supabase: SupabaseClient }) {
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (creatingAccount && !agreed) {
+      setError('Agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const email = String(data.get('email')).trim();
     const password = String(data.get('password'));
@@ -58,10 +65,19 @@ function SignIn({ supabase }: { supabase: SupabaseClient }) {
     setMessage('');
     try {
       if (creatingAccount) {
+        const acceptedAt = new Date().toISOString();
         const result = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/inspections` },
+          options: {
+            emailRedirectTo: `${window.location.origin}/inspections`,
+            data: {
+              terms_version: TERMS_VERSION,
+              terms_accepted_at: acceptedAt,
+              privacy_version: PRIVACY_VERSION,
+              consented_at: acceptedAt,
+            },
+          },
         });
         if (result.error) throw result.error;
         if (!result.data.session) setMessage('Check your email to confirm your account, then sign in.');
@@ -83,10 +99,17 @@ function SignIn({ supabase }: { supabase: SupabaseClient }) {
       <form className={styles.form} onSubmit={submit}>
         <label>Email<input name="email" type="email" autoComplete="email" required /></label>
         <label>Password<input name="password" type="password" autoComplete={creatingAccount ? 'new-password' : 'current-password'} minLength={creatingAccount ? 8 : undefined} required /></label>
-        <button className={styles.primary} disabled={busy}>{creatingAccount ? 'Create account' : 'Sign in'}</button>
+        {creatingAccount && (
+          <label className={styles.termsConsent}>
+            <input name="terms" type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} required />
+            <span><TermsAgreementText /></span>
+          </label>
+        )}
+        <button className={styles.primary} disabled={busy || (creatingAccount && !agreed)}>{creatingAccount ? 'Create account' : 'Sign in'}</button>
       </form>
       <button type="button" className={styles.textButton} disabled={busy} onClick={() => {
         setCreatingAccount(!creatingAccount);
+        setAgreed(false);
         setError('');
         setMessage('');
       }}>{creatingAccount ? 'Back to sign in' : 'Create an account'}</button>

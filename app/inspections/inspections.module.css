@@ -80,6 +80,9 @@
 .comparisonPair img { margin-top: 0.5rem; width: 100%; max-height: 12rem; object-fit: contain; background: #e2ece7; border-radius: 0.4rem; }
 .page label.comparisonConsent { display: flex; align-items: center; gap: 0.55rem; font-weight: 500; }
 .page .comparisonConsent input { width: 1.15rem; height: 1.15rem; min-height: auto; flex-shrink: 0; }
+.page label.termsConsent { display: flex; align-items: flex-start; gap: 0.55rem; font-weight: 500; }
+.page .termsConsent input { width: 1.15rem; height: 1.15rem; min-height: auto; flex-shrink: 0; margin-top: 0.2rem; }
+.page .termsConsent a { color: #176f5a; font-weight: 700; text-decoration: underline; text-underline-offset: 0.18em; }
 .comparisonResult { background: #f4f8f5; border-radius: 0.5rem; padding: 0.9rem; margin-top: 0.65rem; }
 .comparisonResult dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.65rem; font-size: 0.9rem; }
 .comparisonResult dt { font-weight: 750; }

@@ -10,7 +10,7 @@ declare global {
 test.setTimeout(120_000);
 const password = "A calm tenant passphrase";
 const termsLabel =
-  "I agree to the Terms of Service, including a 10% success fee (max $75) only if Tenant Shield helps me recover money.";
+  "I agree to the Terms of Service and Privacy Policy, including a 10% success fee (max $75) only if Tenant Shield helps me recover money.";
 const photo = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -305,11 +305,18 @@ test("Create account stays disabled until the terms are accepted", async ({
   await terms.blur();
   await expect(terms).toHaveAttribute("aria-invalid", "true");
   await expect(
-    page.getByText("Fix this: Agree to the Terms of Service to continue."),
+    page.getByText(
+      "Fix this: Agree to the Terms of Service and Privacy Policy to continue.",
+    ),
   ).toBeVisible();
-  const link = page.getByRole("link", { name: "Terms of Service" });
-  await expect(link).toHaveAttribute("href", "/terms");
-  await expect(link).toHaveAttribute("target", "_blank");
+  for (const [name, href] of [
+    ["Terms of Service", "/terms"],
+    ["Privacy Policy", "/privacy"],
+  ]) {
+    const link = page.getByRole("link", { name, exact: true });
+    await expect(link).toHaveAttribute("href", href);
+    await expect(link).toHaveAttribute("target", "_blank");
+  }
 });
 test("forgot/reset flow and invalid-link state", async ({ page }) => {
   const email = `reset-${Date.now()}@example.test`;

@@ -1,1 +1,2 @@
 export const TERMS_VERSION = "2026-11-14";
+export const PRIVACY_VERSION = "review-draft-v1";
