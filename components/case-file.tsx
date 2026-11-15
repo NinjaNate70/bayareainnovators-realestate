@@ -66,6 +66,7 @@ export function CaseFile({ id }: { id: string }) {
   function update(
     changes:
       Partial<RentalCase> | ((previous: RentalCase) => Partial<RentalCase>),
+    persist = true,
   ) {
     const previous = current.current;
     if (!previous) return;
@@ -75,6 +76,7 @@ export function CaseFile({ id }: { id: string }) {
     };
     current.current = next;
     setData(next);
+    if (!persist) return;
     void saveCase(next)
       .then(() => setError(""))
       .catch(() => {
@@ -190,7 +192,7 @@ export function CaseFile({ id }: { id: string }) {
       {tab === "audit" ? (
         <AuditTab data={data} />
       ) : tab === "letter" ? (
-        <LetterTab data={data} onUpdate={update} />
+        <LetterTab data={data} onUpdate={update} onReplyDateSaved={(replyBy) => update({ replyBy }, false)} />
       ) : tab === "photos" ? (
         <PhotosTab data={data} onUpdate={update} />
       ) : (

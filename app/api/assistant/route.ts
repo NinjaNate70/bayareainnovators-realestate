@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { parseAssistantRequest, runAssistant, type CaseRecord } from '@/lib/case-assistant';
 import { defaultClaudeModel } from '@/lib/claude-json';
 import { neutralService } from '@/lib/neutral-copy';
+import { correspondenceTable, type CaseMessage } from '@/lib/case-correspondence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,24 @@ export async function POST(request: Request) {
       .eq('id', input.caseId).eq('user_id', userId).maybeSingle<CaseRecord>();
     if (found.error) return respond('Could not open your case. Try again in a moment.', 503);
     caseRow = found.data;
+    if (caseRow) {
+      // The email composer saves new messages separately. Keep support for legacy cases and projects awaiting the migration.
+      const history = await renter.from(correspondenceTable).select('kind, status, body')
+        .eq('case_id', input.caseId).eq('user_id', userId)
+        .order('occurred_at', { ascending: false }).order('id', { ascending: false }).limit(30)
+        .returns<Pick<CaseMessage, 'kind' | 'status' | 'body'>[]>();
+      if (history.data) {
+        const incoming = history.data.find(({ status }) => status === 'received');
+        const letter = history.data.find(({ kind, status }) => kind === 'letter' && status !== 'received');
+        const reply = history.data.find(({ kind, status }) => kind === 'reply' && status !== 'received');
+        caseRow = {
+          ...caseRow,
+          incoming_text: incoming?.body ?? caseRow.incoming_text,
+          letter_text: letter?.body ?? caseRow.letter_text,
+          reply_text: reply?.body ?? caseRow.reply_text,
+        };
+      }
+    }
   }
 
   try {
