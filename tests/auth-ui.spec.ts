@@ -283,6 +283,51 @@ test("form semantics, focus, mobile reflow and hidden OAuth", async ({
   ).toBe(true);
   expect(pageErrors).toEqual([]);
 });
+test("money fields behave the same, and a case can be saved without itemized charges", async ({
+  page,
+}) => {
+  await signup(page, `money-${Date.now()}@example.test`);
+  await page.getByLabel("No letter / enter manually").check();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByLabel("Property address")
+    .fill("9 Money Street, San Luis Obispo, CA");
+  const deposit = page.getByLabel("Deposit paid ($)");
+  const returned = page.getByLabel("Amount returned ($)");
+  await expect(deposit).toHaveValue("0");
+  await deposit.click();
+  await page.keyboard.type("1500");
+  await expect(deposit).toHaveValue("1500");
+  await expect(deposit).toHaveAttribute("step", "any");
+  await deposit.press("ArrowUp");
+  await expect(deposit).toHaveValue("1501");
+  await deposit.hover();
+  await page.mouse.wheel(0, 400);
+  await expect(deposit).toHaveValue("1501");
+  await returned.click();
+  await page.keyboard.type("12.5");
+  await expect(returned).toHaveValue("12.5");
+  await returned.fill("0");
+  await page.getByRole("button", { name: "Add charge", exact: true }).click();
+  const amount = page.getByRole("spinbutton", { name: "Charge 1 amount" });
+  await amount.click();
+  await page.keyboard.type("250");
+  await expect(amount).toHaveValue("250");
+  await page
+    .getByRole("button", { name: "Remove charge 1", exact: true })
+    .click();
+  await expect(page.getByText("No charges entered yet")).toHaveCount(0);
+  // Zero charges: Continue works and no "Fix this to continue" banner appears.
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page).toHaveURL(/step=photos/);
+  await expect(page.getByText("Fix this to continue")).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  await expect(page.getByText("No charges entered yet")).toBeVisible();
+  await page.getByRole("button", { name: "Save case", exact: true }).click();
+  await expect(page).toHaveURL(/\/case\/[0-9a-f-]{36}$/);
+  await expect(page.getByText("No itemized charges to audit.")).toBeVisible();
+  await expect(page.getByText("$0", { exact: true })).toHaveCount(0);
+});
 test("Create account stays disabled until the terms are accepted", async ({
   page,
 }) => {

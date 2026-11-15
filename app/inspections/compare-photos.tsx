@@ -54,7 +54,7 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
   supabase: SupabaseClient;
   roomId: string;
   roomName: string;
-  // The renter chose to have each room's newest pair analysed without asking each time.
+  // The renter chose to have each room's newest pair analyzed without asking each time.
   auto: boolean;
   photos: PhotoChoice[];
   renderPhoto: (id: string) => ReactNode;
@@ -92,13 +92,13 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
   const newestResult = results.find((result) => result.move_in_photo_id === newestIn && result.move_out_photo_id === newestOut);
   const hasNewestResult = Boolean(newestResult);
 
-  const analyse = useCallback(async (moveInId: string, moveOutId: string) => {
+  const Analyze = useCallback(async (moveInId: string, moveOutId: string) => {
     setAutoBusy(true);
     setAutoError('');
     try {
       saveResult(await requestComparison(supabase, { moveInId, moveOutId, spot: roomName.trim().slice(0, 120) || 'Room' }));
     } catch (cause) {
-      setAutoError(cause instanceof Error ? cause.message : 'Could not analyse the photos.');
+      setAutoError(cause instanceof Error ? cause.message : 'Could not Analyze the photos.');
     } finally {
       setAutoBusy(false);
     }
@@ -110,18 +110,18 @@ export function ComparePhotos({ supabase, roomId, roomName, auto, photos, render
     // One automatic attempt per pair; a failure waits for the renter to retry.
     if (attempted.current.has(pair)) return;
     attempted.current.add(pair);
-    queueMicrotask(() => void analyse(newestIn, newestOut));
-  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, analyse]);
+    queueMicrotask(() => void Analyze(newestIn, newestOut));
+  }, [auto, historyLoading, historyError, hasNewestResult, newestIn, newestOut, Analyze]);
 
   if (!moveIn.length || !moveOut.length) return null;
   const names = new Map(photos.map(({ id, original_name }) => [id, original_name]));
   return (
     <div className={styles.comparison}>
-      {autoBusy && <p role="status">Our system is analysing the newest move-in and move-out photos for this room…</p>}
+      {autoBusy && <p role="status">Our system is analyzing the newest move-in and move-out photos for this room…</p>}
       {autoError && !autoBusy && (
         <p role="alert" className={styles.error}>
           Automatic analysis didn’t finish: {autoError}{' '}
-          <button type="button" className={styles.secondary} onClick={() => void analyse(newestIn!, newestOut!)}>Try again</button>
+          <button type="button" className={styles.secondary} onClick={() => void Analyze(newestIn!, newestOut!)}>Try again</button>
         </p>
       )}
       {newestResult && !open && <div role="status"><ComparisonResult result={newestResult} photoNames={names} /></div>}
@@ -201,7 +201,7 @@ function ComparisonForm({ supabase, moveIn, moveOut, renderPhoto, results, histo
               </div>
               <label className={styles.comparisonConsent}>
                 <input key={`${moveInId}/${moveOutId}`} name="consent" type="checkbox" required />
-                <span>These photos show the same spot. I agree to have our system analyse both photos.</span>
+                <span>These photos show the same spot. I agree to let our system Analyze both photos.</span>
               </label>
               <button className={styles.primary} disabled={busy || historyLoading}>{busy ? 'Comparing…' : 'Run comparison'}</button>
             </>

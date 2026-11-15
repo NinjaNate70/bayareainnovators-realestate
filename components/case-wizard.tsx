@@ -28,6 +28,7 @@ import { getBackend, hosted } from "@/lib/backend";
 import { fromRow } from "@/lib/db/mapping";
 import { unwrap } from "@/lib/cases";
 import { plural } from "@/lib/neutral-copy";
+import { MoneyInput } from "@/components/money-input";
 import { rememberCase } from "@/lib/auth/drafts";
 import type { Evidence, RentalCase } from "@/types/case";
 
@@ -246,15 +247,17 @@ export function CaseWizard() {
         );
         return;
       }
+      // Itemized charges are optional (a landlord may never send a list).
+      // An untouched blank row is dropped; any other row must be complete.
+      const entered = data.charges.filter((c) => c.name.trim() || c.amount);
       if (
-        !data.charges.length ||
-        data.charges.some(
+        entered.some(
           (c) => !c.name.trim() || !Number.isFinite(c.amount) || c.amount <= 0,
         )
       ) {
         setInvalid("charges");
         setError(
-          "Add at least one charge with a description and an amount greater than zero.",
+          "Give each charge a description and an amount greater than zero, or remove it.",
         );
         return;
       }
@@ -270,10 +273,11 @@ export function CaseWizard() {
         return;
       }
       if (
+        entered.length > 0 &&
         Math.abs(
           data.deposit -
             data.returned -
-            data.charges.reduce((n, c) => n + c.amount, 0),
+            entered.reduce((n, c) => n + c.amount, 0),
         ) > 0.01
       ) {
         setInvalid("money");
@@ -289,6 +293,7 @@ export function CaseWizard() {
         );
         return;
       }
+      if (entered.length !== data.charges.length) patch({ charges: entered });
     }
     patch({ completedStep: Math.max(data.completedStep, step + 1) });
     navigate(step + 1);
@@ -324,7 +329,10 @@ export function CaseWizard() {
     });
     try {
       let value: RentalCase;
-      if (data.demo || !hosted)
+      // No itemized charges (the landlord may never have sent a list): there
+      // is nothing to audit, so the case is saved as reviewed without one.
+      if (!data.charges.length) value = { ...data, audited: true, stale: false };
+      else if (data.demo || !hosted)
         // Demo findings are never applied to a renter's own uploads.
         value = recorded(
           `${recordedLead} Automated evidence review needs a signed-in account on the hosted service. Add supporting records and review ${data.charges.length === 1 ? "the charge" : "the charges"} before drawing a conclusion.`,
@@ -598,33 +606,21 @@ export function CaseWizard() {
                       </label>
                       <label>
                         <span className="field-label">Deposit paid ($)</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          inputMode="decimal"
+                        <MoneyInput
                           value={data.deposit}
                           id="deposit"
                           aria-invalid={invalid === "money"}
                           aria-describedby={
                             invalid === "money" ? "money-error" : undefined
                           }
-                          onChange={(e) =>
-                            patch({ deposit: Number(e.target.value) })
-                          }
+                          onValueChange={(deposit) => patch({ deposit })}
                         />
                       </label>
                       <label>
                         <span className="field-label">Amount returned ($)</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          inputMode="decimal"
+                        <MoneyInput
                           value={data.returned}
-                          onChange={(e) =>
-                            patch({ returned: Number(e.target.value) })
-                          }
+                          onValueChange={(returned) => patch({ returned })}
                         />
                       </label>
                     </div>
@@ -654,11 +650,9 @@ export function CaseWizard() {
                         </p>
                       )}
                       <p className="small muted">
-                        From{" "}
-                        {data.demo
-                          ? "L01 · example letter"
-                          : "your deduction letter"}
-                        . Confirm each description and amount.
+                        {data.charges.length
+                          ? `From ${data.demo ? "L01 · example letter" : "your deduction letter"}. Confirm each description and amount.`
+                          : "Optional. If your landlord didn’t send an itemized list, you can continue without adding any charges."}
                       </p>
                       {data.charges.map((c, i) => (
                         <div className="charge-entry" key={c.id}>
@@ -681,20 +675,14 @@ export function CaseWizard() {
                           </label>
                           <label>
                             Amount ($)
-                            <input
+                            <MoneyInput
                               aria-label={`Charge ${i + 1} amount`}
-                              type="number"
-                              inputMode="decimal"
-                              min="0"
-                              step="0.01"
                               value={c.amount}
-                              onChange={(e) =>
+                              onValueChange={(amount) =>
                                 patch({
                                   demo: false,
                                   charges: data.charges.map((x, j) =>
-                                    j === i
-                                      ? { ...x, amount: Number(e.target.value) }
-                                      : x,
+                                    j === i ? { ...x, amount } : x,
                                   ),
                                 })
                               }
@@ -822,7 +810,9 @@ export function CaseWizard() {
                       <p>
                         {data.demo
                           ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
-                          : hosted
+                          : !data.charges.length
+                            ? "No itemized charges were entered, so there is no charge-by-charge audit. Your case will be saved with your documents and photos, and you can add charges later if your landlord sends a list. The result is information, not legal advice."
+                            : hosted
                             ? "Our system reads your documents and evidence to build your audit, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
@@ -855,7 +845,9 @@ export function CaseWizard() {
                   ? "Reading your evidence…"
                   : "Preparing…"
                 : step === 3
-                  ? "Run audit"
+                  ? data.charges.length
+                    ? "Run audit"
+                    : "Save case"
                   : step === 2
                     ? "Continue to review"
                     : "Continue"}

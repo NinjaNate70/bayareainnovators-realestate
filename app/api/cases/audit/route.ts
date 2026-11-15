@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     const download = await renter.storage.from(file.bucket).download(file.path);
     if (download.error || !download.data) { skip('the file could not be opened.'); continue; }
     const mime = mimes.includes(download.data.type) ? download.data.type : String(file.type);
-    if (!mimes.includes(mime) || (group === 'photos' && mime === 'application/pdf')) { skip('this file type can’t be analysed.'); continue; }
+    if (!mimes.includes(mime) || (group === 'photos' && mime === 'application/pdf')) { skip('this file type can’t be analyzed.'); continue; }
     if (used[group].bytes + download.data.size > limits[group].bytes) { skip('the files together are too large for one audit. Use a smaller copy.'); continue; }
     used[group].count += 1;
     used[group].bytes += download.data.size;

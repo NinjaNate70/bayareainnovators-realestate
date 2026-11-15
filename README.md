@@ -82,9 +82,9 @@ Uploads go directly to Supabase. The app keeps the original file and supports JP
 
 The app reuses the saved result for the same two photo IDs, including the spot and price snapshot submitted with that pair. For pairs too large for the inline Gemini request, the API uploads temporary files to Gemini and requests deletion after processing. Google expires undeleted API files automatically. [Gemini Files API](https://ai.google.dev/gemini-api/docs/files)
 
-### Analyse photos automatically
+### Analyze photos automatically
 
-Tick **Analyse photos automatically** above the inspection photos to skip the manual steps. Whenever a room has both a move-in and a move-out photo, the app sends that room's newest pair to Gemini and shows the result under the room, using the room name as the spot. It runs once per pair, so a saved result is reused instead of sent again, and a failed attempt waits for **Try again**. The choice is off by default because it sends photos to Google, and it is remembered per account in that browser. **Compare other photos** still opens the manual form for older photos or a pricing region.
+Tick **Analyze photos automatically** above the inspection photos to skip the manual steps. Whenever a room has both a move-in and a move-out photo, the app sends that room's newest pair to Gemini and shows the result under the room, using the room name as the spot. It runs once per pair, so a saved result is reused instead of sent again, and a failed attempt waits for **Try again**. The choice is off by default because it sends photos to Google, and it is remembered per account in that browser. **Compare other photos** still opens the manual form for older photos or a pricing region.
 
 ### Set up repair price ranges
 

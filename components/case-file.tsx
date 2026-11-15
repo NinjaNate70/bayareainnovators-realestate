@@ -243,9 +243,15 @@ export function AuditTab({ data }: { data: RentalCase }) {
             </strong>
           </div>
           <div>
-            <span className="metric-label">TOTAL DEDUCTED</span>
+            <span className="metric-label">
+              {data.charges.length ? "TOTAL DEDUCTED" : "WITHHELD, NOT ITEMIZED"}
+            </span>
             <strong className="metric-value numeral">
-              {money(data.charges.reduce((n, c) => n + c.amount, 0))}
+              {data.charges.length
+                ? money(data.charges.reduce((n, c) => n + c.amount, 0))
+                : data.deposit > data.returned
+                  ? money(data.deposit - data.returned)
+                  : "None"}
             </strong>
           </div>
           <div className="metric-wide">
@@ -268,9 +274,30 @@ export function AuditTab({ data }: { data: RentalCase }) {
           <p>Clear explanations. The evidence behind each one.</p>
         </div>
         <span className="small muted">
-          {plural(data.charges.length, "itemized charge")}
+          {data.charges.length
+            ? plural(data.charges.length, "itemized charge")
+            : "No itemized charges"}
         </span>
       </div>
+      {!data.charges.length ? (
+        <div className="empty-block">
+          <FileSearch size={36} aria-hidden="true" />
+          <h3>No itemized charges to audit.</h3>
+          <p>
+            {data.deposit > data.returned
+              ? `${money(data.deposit - data.returned)} of the deposit was kept without an itemized list. `
+              : ""}
+            Ask your landlord for an itemized statement with receipts, or add the
+            charges if you already have them.
+          </p>
+          <Button asChild variant="outline">
+            <Link href={`/case/new?edit=${data.id}&step=details`}>
+              Add charges
+            </Link>
+          </Button>
+        </div>
+      ) : (
+      <>
       <div className="filters" aria-label="Filter charges">
         <button
           className="filter-button"
@@ -341,6 +368,8 @@ export function AuditTab({ data }: { data: RentalCase }) {
             Clear filter
           </Button>
         </div>
+      )}
+      </>
       )}
       <ActionBar>
         <Button asChild>

@@ -98,7 +98,20 @@ export function PhotosTab({
           ))}
         </Card>
       )}
-      {!photos.length ? (
+      {!data.charges.length ? (
+        <div className="empty-block">
+          <Camera size={38} aria-hidden="true" />
+          <h3>No itemized charges to compare yet.</h3>
+          <p>
+            Photos are compared one charge at a time. Your photos stay with
+            your case, and you can add charges if your landlord sends a list.
+          </p>
+          <Button onClick={() => setAdding(true)}>
+            <Plus size={18} aria-hidden="true" />
+            Add photos
+          </Button>
+        </div>
+      ) : !photos.length ? (
         <div className="empty-block">
           <Camera size={38} aria-hidden="true" />
           <h3>No photos added yet.</h3>
