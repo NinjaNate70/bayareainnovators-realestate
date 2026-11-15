@@ -1,8 +1,10 @@
 import type { RentalCase } from "@/types/case";
 
-// TODO(api): Consume the audit service's evidence-backed range instead of fixture arithmetic.
+// An estimate needs findings: the example case's fixture, or charges the
+// automated audit reviewed. Charges only recorded by the renter have neither.
 export function estimateRecovery(data: RentalCase) {
-  if (!data.demo || !data.audited || data.stale) return null;
+  const reviewed = data.demo || data.charges.some((c) => c.requests !== undefined);
+  if (!reviewed || !data.audited || data.stale) return null;
   if (
     !Number.isFinite(data.deposit) ||
     !Number.isFinite(data.returned) ||

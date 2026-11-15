@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { Charge, RentalCase, Verdict } from "@/types/case";
 import { rules } from "@/lib/fixtures/demo-case";
+import { depositGuide, guideSource } from "@/lib/case-assistant";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { money, getFile } from "@/lib/cases";
@@ -33,8 +34,39 @@ export function VerdictChip({ verdict }: { verdict: Verdict }) {
   );
 }
 export function SourceChip({ id, data }: { id: string; data: RentalCase }) {
-  const rule = rules[id];
   const file = data.evidence.find((e) => e.id === id);
+  // Audited charges cite sections of the California Courts guide.
+  const section = file ? undefined : depositGuide.find((s) => s.id === id);
+  if (section)
+    return (
+      <Sheet
+        title={section.title}
+        description={`${id} · ${guideSource.publisher}`}
+        trigger={
+          <button className="source-chip">
+            <BookOpen size={15} aria-hidden="true" />
+            {id}
+            <span> · {section.title}</span>
+          </button>
+        }
+      >
+        <p>{section.text}</p>
+        <div className="notice">
+          Summarised from the California Courts guide. Information, not legal
+          advice.
+        </div>
+        <a
+          className="text-link"
+          href={guideSource.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Read the {guideSource.publisher}{" "}
+          <ExternalLink size={16} aria-hidden="true" />
+        </a>
+      </Sheet>
+    );
+  const rule = rules[id];
   const Icon = rule
     ? BookOpen
     : file?.kind === "before" || file?.kind === "after"
@@ -198,14 +230,33 @@ export function ChargeDetails({
       <h3>Included in the estimate</h3>
       <p>
         {charge.high
-          ? `${money(charge.low)}–${money(charge.high)} · illustrative, subject to evidence review.`
+          ? `${money(charge.low)}–${money(charge.high)} · ${charge.requests ? "the amount in question" : "illustrative"}, subject to evidence review.`
           : "Not included in the estimated recovery."}
       </p>
-      {charge.verdict === "info" && (
+      <ChargeRequests charge={charge} />
+      {charge.verdict === "info" && !charge.requests?.length && (
         <p>
           Add comparable photos or the repair receipt to clarify this charge.
         </p>
       )}
     </Sheet>
+  );
+}
+// What the audit asks the renter to add or check for a charge.
+export function ChargeRequests({ charge }: { charge: Charge }) {
+  if (!charge.requests?.length) return null;
+  return (
+    <div className="charge-requests">
+      <strong>
+        {charge.verdict === "info"
+          ? "What we need to review this charge"
+          : "What would strengthen this"}
+      </strong>
+      <ul>
+        {charge.requests.map((request) => (
+          <li key={request}>{request}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

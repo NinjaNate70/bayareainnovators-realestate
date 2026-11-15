@@ -52,7 +52,9 @@ export function OwedCard({ data }: { data: RentalCase }) {
           <p className="owed-support">
             {estimate
               ? `Across ${estimate.included.length} charges worth a closer look. A range, never a guarantee.`
-              : "Your charges are recorded. A connected evidence review is needed before estimating recovery."}
+              : data.charges.some((c) => c.requests !== undefined)
+                ? "Your evidence was reviewed. No charge is in question on what you’ve added so far; see what each charge still needs below."
+                : "Your charges are recorded. A connected evidence review is needed before estimating recovery."}
           </p>
         </div>
         <div className="owed-seal" aria-hidden="true">
