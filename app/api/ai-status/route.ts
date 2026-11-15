@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { checkAiServices } from '@/lib/ai-status';
+import { defaultClaudeModel } from '@/lib/claude-json';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,8 +40,8 @@ export async function POST(request: Request) {
   const services = await checkAiServices({
     geminiKey: process.env.GEMINI_API_KEY,
     geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-    openAiKey: process.env.OPENAI_API_KEY,
-    openAiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    claudeKey: process.env.ANTHROPIC_API_KEY,
+    claudeModel: process.env.ANTHROPIC_MODEL || defaultClaudeModel,
   });
   return Response.json({ services }, { headers: { 'Cache-Control': 'no-store' } });
 }

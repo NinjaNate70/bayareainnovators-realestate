@@ -94,7 +94,7 @@ Add sourced entries to `repair_price_bands` in Supabase. Use a lowercase region 
 
 With `NEXT_PUBLIC_BACKEND=supabase`, **Run audit** on the wizard's Review step reads the renter's evidence instead of only recording the charges. It uses the same keys as the case assistant.
 
-1. A **document reader** (OpenAI) reads the deduction letter and lease: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, and lease terms about the deposit. If OpenAI is unavailable, Gemini reads them.
+1. A **document reader** (Claude) reads the deduction letter and lease: each charge's amount, the landlord's reason, whether a receipt or invoice is attached, and lease terms about the deposit. If Claude is unavailable, Gemini reads them.
 2. A **photo analyst** (Gemini) looks at the move-in and move-out photos and reports what is visible for each charge. Steps 1 and 2 run together.
 3. An **auditor** (Gemini) weighs each charge against those findings, any saved Compare photos results from My Inspections, and the California Courts guide.
 
@@ -106,7 +106,7 @@ Limits to know about:
 - Files must be PDF, PNG or JPEG. Photos from My Inspections are not read directly; only their saved comparison results are used.
 - The audit can take up to a minute. If it fails, nothing is changed and the renter can run it again.
 - If `GEMINI_API_KEY` is missing, charges are recorded as **Need more info**, as before. The example case and the browser-only demo never use the audit.
-- The letter, lease, photos and case details are sent to OpenAI and Google. The Review step says so before the renter runs it.
+- The letter, lease, photos and case details are sent to Anthropic (Claude) and Google. The Review step says so before the renter runs it.
 
 The result is information to help a renter organise their case, not legal advice.
 
@@ -115,13 +115,13 @@ The result is information to help a renter organise their case, not legal advice
 The case screens show **Ask the assistant** when `NEXT_PUBLIC_BACKEND=supabase`. Each answer passes through two agents from two providers:
 
 1. A **specialist** (Gemini) picks the role that fits the question and drafts the answer in that role: the step guide, the evidence checker, the deposit rules explainer or the letter helper.
-2. A **reviewer** (OpenAI) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
+2. A **reviewer** (Claude) checks the draft against the case facts and the rules guide. It approves the draft or replaces it with a correction. A draft the reviewer has not passed is never shown.
 
-If Gemini is overloaded (it answers `503` or `429`), the app retries once and then lets OpenAI draft the answer, examine the photos or run the audit instead. If OpenAI is down, Gemini covers its jobs. With both keys set, one provider having a bad moment doesn't stop the audit or the assistant.
+If Gemini is overloaded (it answers `503` or `429`), the app retries once and then lets Claude draft the answer, examine the photos or run the audit instead. If Claude is down, Gemini covers its jobs. With both keys set, one provider having a bad moment doesn't stop the audit or the assistant.
 
 ### If answers don't come through
 
-Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and OpenAI: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
+Open the assistant and choose **Not getting answers? Check the AI connection**. The server tests each service with the site's own keys and reports, for Gemini and Claude: whether the key is set and accepted, whether the configured model exists for that key (with a list of models that do), and how long a one-word test took. It tells a wrong key (400/401/403), an unknown model (404), no credit or quota (429) and an overloaded service (5xx) apart, and says what to change. Keys and provider messages are never shown.
 
 An answer usually takes 10 to 30 seconds. If a model fails or is too slow, the message names the service and status, such as `Gemini request failed (404)`, which points to a wrong model name or key.
 
@@ -132,10 +132,10 @@ Add these in Vercel and redeploy. Neither has a `NEXT_PUBLIC_` prefix.
 | Variable | Value |
 |---|---|
 | `GEMINI_API_KEY` | The same Google AI Studio key used for Compare photos |
-| `OPENAI_API_KEY` | A key from the [OpenAI platform](https://platform.openai.com/api-keys). Without it, Gemini reviews its own drafts. |
-| `OPENAI_MODEL` (optional) | A chat model your OpenAI account can use. The default is `gpt-4o-mini`. |
+| `ANTHROPIC_API_KEY` | A key from the [Claude Console](https://platform.claude.com/settings/keys), billed to your Claude API credit. Without it, Gemini reviews its own drafts. |
+| `ANTHROPIC_MODEL` (optional) | A Claude model ID. The default is `claude-opus-5-5`; a smaller model such as `claude-haiku-5-5` costs less. |
 
-The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Google and OpenAI for each answer; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
+The server reads the renter's case with their own session, so the assistant sees only that renter's case. The question, recent conversation and case details (names, address, dates, amounts, charges, file names and letter text) are sent to Google and Anthropic for each answer; uploaded files and photos are not. The conversation is kept in the open page and is not saved. Each renter is limited to about ten questions a minute.
 
 ## Run a live move-out audit
 
