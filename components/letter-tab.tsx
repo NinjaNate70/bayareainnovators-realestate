@@ -20,6 +20,7 @@ import { estimateRecovery } from "@/lib/estimate";
 import { draftLocalLetter } from "@/lib/local-correspondence";
 import { plural } from "@/lib/neutral-copy";
 import { hosted } from "@/lib/backend";
+import { useAuth } from "@/components/auth/provider";
 
 export function LetterTab({
   data,
@@ -30,6 +31,7 @@ export function LetterTab({
   temporary?: boolean;
   onUpdate: (changes: Partial<RentalCase>) => void;
 }) {
+  const { session } = useAuth();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -40,7 +42,7 @@ export function LetterTab({
     setError("");
     try {
       await Promise.resolve();
-      onUpdate({ letter: draftLocalLetter(data) });
+      onUpdate({ letter: draftLocalLetter(data, session?.user.user_metadata.name) });
       setStatus("Draft prepared. Review and edit it before using it.");
     } catch {
       setError(

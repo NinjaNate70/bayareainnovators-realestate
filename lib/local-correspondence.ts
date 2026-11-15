@@ -3,6 +3,9 @@ import { estimateRecovery } from './estimate.ts';
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const dateFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' });
+const sentenceSegmenter = typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter('en-US', { granularity: 'sentence' })
+  : null;
 const validAmount = (value: number) => Number.isFinite(value) && value >= 0;
 const location = (data: RentalCase) => data.address.trim() ? ` for ${data.address.trim()}` : '';
 const words = (value: string) => ` ${value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
@@ -12,11 +15,16 @@ function dated(value: string) {
   return new Date(value).toISOString().slice(0, 10) === value ? dateFormat.format(new Date(value)) : '';
 }
 
-function wrap(data: RentalCase, paragraphs: string[]) {
+function correspondenceSignature(accountName: unknown, caseRenter: string) {
+  const name = [accountName, caseRenter].find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  return `Thank you,\n${name?.trim().replace(/\s+/g, ' ').slice(0, 100) || '[Your name]'}`;
+}
+
+function wrap(data: RentalCase, paragraphs: string[], accountName?: string) {
   return [
     `Dear ${data.landlord.trim() || 'Property Manager'},`,
     ...paragraphs.filter(Boolean),
-    `Thank you,\n${data.renter.trim() || '[Your name]'}`,
+    correspondenceSignature(data.demo ? undefined : accountName, data.renter),
     ...(data.demo ? ['DEMO DRAFT: Review all example findings before use.'] : []),
   ].join('\n\n');
 }
@@ -29,7 +37,28 @@ function chargeLine(charge: Charge) {
   return `${charge.name.trim()}${validAmount(charge.amount) ? ` (${dollars.format(charge.amount)})` : ''}`;
 }
 
-export function draftLocalLetter(data: RentalCase) {
+function letterFinding(data: RentalCase, charge: Charge) {
+  // Audit prose can combine rules with case facts. Keep complete evidence
+  // sentences so removing a rule clause can't change what a record says.
+  const sentences = sentenceSegmenter
+    ? Array.from(sentenceSegmenter.segment(charge.reason), ({ segment }) => segment)
+    : charge.reason.split(/(?<=[.!?])\s+/);
+  const details = sentences.map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !/\b(?:the (?:numbered )?guide|California Courts (?:Self-Help )?Guide)\b/i.test(sentence) && !/^No photos were uploaded\b/i.test(sentence))
+    .join(' ');
+  if (details) {
+    return charge.sources.reduce((text, id) => text.replaceAll(` (${id})`, ''), details)
+      .replace(/\bsigned by you and the (?:property manager|landlord)\b/gi, 'signed by both parties');
+  }
+
+  const records = data.evidence.filter(({ id, name }) => charge.sources.includes(id) && name.trim());
+  const names = records.map(({ name }) => `“${name.trim()}”`).join(', ');
+  return names
+    ? `Please explain how you accounted for ${names} when calculating this charge.`
+    : 'Please explain the basis for this deduction and provide the supporting records.';
+}
+
+export function draftLocalLetter(data: RentalCase, accountName?: string) {
   const estimate = estimateRecovery(data);
   const charges = recordedCharges(data);
   const moveOut = dated(data.moveOut);
@@ -38,7 +67,7 @@ export function draftLocalLetter(data: RentalCase) {
     ? ` My records show a deposit of ${dollars.format(data.deposit)} and ${dollars.format(data.returned)} returned, leaving ${dollars.format(data.deposit - data.returned)} withheld.`
     : '';
   const details = estimate
-    ? `I dispute the following deductions based on my review of the records:\n\n${estimate.included.map((charge) => `• ${chargeLine(charge)}: ${charge.reason}`).join('\n')}`
+    ? `I dispute the following deductions based on my review of the records:\n\n${estimate.included.map((charge) => `• ${chargeLine(charge)}: ${letterFinding(data, charge)}`).join('\n')}`
     : charges.length
       ? `Please explain the basis for these deductions and provide the itemization or records supporting the work and the amount charged:\n\n${charges.map((charge) => `• ${chargeLine(charge)}`).join('\n')}`
       : 'Please send the itemized statement for any amount still withheld, with the records showing what was charged and why.';
@@ -50,7 +79,7 @@ export function draftLocalLetter(data: RentalCase) {
       ? 'Please send a revised itemized statement and return any amount you can’t substantiate. For each deduction you maintain, please identify the records showing why the work was needed and how the cost was calculated.'
       : 'Please confirm the remaining balance and when any refund will be sent.',
     replyBy ? `Please respond by ${replyBy}.` : '',
-  ])}`;
+  ], accountName)}`;
 }
 
 function supportingRecords(data: RentalCase, charge: Charge) {
@@ -85,7 +114,7 @@ function confirmedReduction(charge: Charge, sentences: string[]) {
   return amounts.length === 1 ? amounts[0] : undefined;
 }
 
-export function draftLocalReply(data: RentalCase) {
+export function draftLocalReply(data: RentalCase, accountName?: string) {
   const reviewed = estimateRecovery(data)?.included ?? [];
   const charges = recordedCharges(data);
   const message = words(data.incoming);
@@ -112,5 +141,5 @@ export function draftLocalReply(data: RentalCase) {
       : items.some(({ amount }) => amount !== 0)
         ? 'If an adjustment is still pending, please confirm the updated balance and when any additional refund will be sent.'
         : '',
-  ]);
+  ], accountName);
 }

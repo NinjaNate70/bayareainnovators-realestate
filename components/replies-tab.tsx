@@ -19,6 +19,7 @@ import { SourceChip } from "@/components/evidence";
 import { estimateRecovery } from "@/lib/estimate";
 import { draftLocalReply } from "@/lib/local-correspondence";
 import { hosted } from "@/lib/backend";
+import { useAuth } from "@/components/auth/provider";
 
 export function RepliesTab({
   data,
@@ -29,6 +30,7 @@ export function RepliesTab({
   temporary?: boolean;
   onUpdate: (changes: Partial<RentalCase>) => void;
 }) {
+  const { session } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -47,7 +49,7 @@ export function RepliesTab({
     setBusy(true);
     try {
       await Promise.resolve();
-      onUpdate({ reply: draftLocalReply(data) });
+      onUpdate({ reply: draftLocalReply(data, session?.user.user_metadata.name) });
       setStatus(
         "Reply template prepared. Review and edit the draft.",
       );

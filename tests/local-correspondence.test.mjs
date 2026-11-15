@@ -48,3 +48,37 @@ test('local reply acknowledges only an explicit, charge-specific reduction', () 
   assert.match(removed, /Thank you for removing/i);
   assert.doesNotMatch(removed, /still withholding|adjustment is still pending/);
 });
+
+test('local letter keeps the evidence and signs with the account name when audit findings refer to the guide', () => {
+  const statement = { id: 'L01', name: 'Itemized statement.pdf', kind: 'letter' };
+  const walkthrough = { id: 'D-C0E5C825', name: 'Signed move-out walkthrough.pdf', kind: 'other' };
+  const charges = [
+    {
+      ...demoCase.charges[1], name: 'Flat move-out cleaning fee', amount: 240,
+      reason: 'The itemized statement lists a $240 flat move-out cleaning fee and says no receipt, invoice or work breakdown was provided. Because total deductions are over $125, the guide says the landlord must attach invoices. The guide also limits cleaning to the original condition, and the signed walkthrough (D-C0E5C825) notes nothing about cleaning. No photos were uploaded to show the unit’s condition.',
+      sources: ['G4', statement.id, walkthrough.id], requests: [],
+    },
+    {
+      ...demoCase.charges[0], name: 'Routine repainting of walls between tenants', amount: 360, high: 360,
+      reason: 'The itemized statement says the charge is for normal fading only. The move-out walkthrough signed by you and the property manager (D-C0E5C825) also records no wall damage. The guide says a landlord can deduct for damage other than normal wear and tear.',
+      sources: ['G6', statement.id, walkthrough.id], requests: [],
+    },
+    {
+      ...demoCase.charges[2], reason: 'The guide says this can be disputed.', sources: ['G6', walkthrough.id], requests: [],
+    },
+  ];
+  const data = { ...demoCase, demo: false, charges, evidence: [statement, walkthrough] };
+  const draft = draftLocalLetter(data, '  Jamie Ruiz  ');
+  assert.match(draft, /Flat move-out cleaning fee \(\$240\).*itemized statement.*no receipt, invoice or work breakdown/);
+  assert.match(draft, /Routine repainting of walls between tenants \(\$360\).*walkthrough signed by both parties also records no wall damage/);
+  assert.match(draft, /Carpet replacement.*Signed move-out walkthrough/);
+  assert.doesNotMatch(draft, /the guide|D-C0E5C825|were uploaded/i);
+  assert.match(draft, /Thank you,\nJamie Ruiz$/);
+  assert.match(draftLocalLetter(data, ' '), /Thank you,\nAlex Morgan$/);
+  assert.match(draftLocalLetter(demoCase, 'Jamie Ruiz'), /Thank you,\nAlex Morgan\n/);
+});
+
+test('local reply uses the account name for a real case', () => {
+  assert.match(draftLocalReply({ ...demoCase, demo: false }, 'Jamie Ruiz'), /Thank you,\nJamie Ruiz$/);
+  assert.match(draftLocalReply({ ...demoCase, demo: false, renter: '' }), /Thank you,\n\[Your name\]$/);
+});
