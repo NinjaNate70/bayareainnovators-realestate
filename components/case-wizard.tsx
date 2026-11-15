@@ -830,7 +830,7 @@ export function CaseWizard() {
                         {data.demo
                           ? "This example includes prewritten findings and illustrative rule references. No live AI analysis is performed."
                           : hosted
-                            ? "Running the audit sends your deduction letter, lease, photos and case details to Anthropic’s Claude and Google Gemini. They read your documents and photos, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
+                            ? "Running the audit sends your deduction letter, lease, other documents, photos and case details to Anthropic’s Claude, or to Google Gemini if Claude is unavailable. They read your documents and photos, and each charge is checked against the California Courts deposit guide. It can take up to a minute. The result is information, not legal advice."
                             : "Your documents stay in this browser. Live analysis is not connected, so your charges will be marked Need more info. No legal conclusions will be generated."}
                       </p>
                     </div>

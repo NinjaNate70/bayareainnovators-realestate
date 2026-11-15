@@ -91,7 +91,8 @@ export function normalizeExtraction(value: Json, readBy: LetterExtraction['read_
 
 export async function extractLetter(options: {
   files: LetterFile[];
-  geminiKey: string;
+  // At least one key is needed.
+  geminiKey?: string;
   geminiModel: string;
   claudeKey?: string;
   claudeModel: string;
@@ -108,9 +109,11 @@ export async function extractLetter(options: {
       const reading = await askClaude({ apiKey: options.claudeKey, model: options.claudeModel, system, content, schema, fetch: call, timeout: 26_000 });
       return normalizeExtraction(reading, 'claude');
     } catch (error) {
+      if (!options.geminiKey) throw error;
       first = error;
     }
   }
+  if (!options.geminiKey) throw new Error('No AI service is configured.');
   const parts: GeminiPart[] = [];
   for (const file of options.files) parts.push({ text: label(file) }, { inline_data: { mime_type: file.mime, data: file.data } });
   try {

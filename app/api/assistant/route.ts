@@ -40,9 +40,11 @@ function failure(error: unknown) {
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // Claude answers. Gemini is optional and only stands in if Claude fails.
+  const claudeKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (!url || !publishableKey || !geminiKey) {
-    return respond('The case assistant is unavailable. Ask your project admin to finish the Gemini and Supabase setup.', 503);
+  if (!url || !publishableKey || (!claudeKey && !geminiKey)) {
+    return respond('The case assistant is unavailable. Ask your project admin to add the Claude API key.', 503);
   }
 
   const accessToken = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/i)?.[1];
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
       today: new Date().toISOString().slice(0, 10),
       geminiKey,
       geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      claudeKey: process.env.ANTHROPIC_API_KEY,
+      claudeKey,
       claudeModel: process.env.ANTHROPIC_MODEL || defaultClaudeModel,
     });
     return Response.json(reply, { headers: { 'Cache-Control': 'no-store' } });

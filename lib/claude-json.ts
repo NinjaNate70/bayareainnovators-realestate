@@ -54,6 +54,9 @@ export async function askClaude(options: {
   content: ClaudeContent;
   schema: Json;
   timeout: number;
+  // Thinking depth. Low keeps reading and reviewing quick; the audit's final
+  // judgement asks for medium when there is time.
+  effort?: 'low' | 'medium';
   fetch?: typeof fetch;
 }): Promise<Json> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = typeof options.content === 'string'
@@ -72,9 +75,8 @@ export async function askClaude(options: {
       max_tokens: 8000,
       system: options.system,
       messages: [{ role: 'user', content }],
-      // Thinking is always on for this model; low effort keeps it brief so the
-      // answer fits the time limit.
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: strictSchema(options.schema) as Json } },
+      // Thinking is always on for this model; effort sets how long it thinks.
+      output_config: { effort: options.effort ?? 'low', format: { type: 'json_schema', schema: strictSchema(options.schema) as Json } },
       // If a safety check declines the request, Anthropic re-runs it on the
       // model it recommends instead of returning the refusal.
       betas: ['server-side-fallback-2026-07-01'],

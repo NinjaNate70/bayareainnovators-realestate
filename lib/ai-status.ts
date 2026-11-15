@@ -24,6 +24,8 @@ export type ServiceStatus = {
   fix: string;
   // Models this key can use, when the configured one is not among them.
   available_models: string[];
+  // True for a service the app works without.
+  optional?: boolean;
 };
 
 const timedOut = (error: unknown) => error instanceof Error && error.name === 'TimeoutError';
@@ -44,10 +46,10 @@ function explain(service: 'Gemini' | 'Claude', status: number, variable: string)
 
 async function checkGemini(apiKey: string | undefined, model: string, call: Fetch): Promise<ServiceStatus> {
   const base: ServiceStatus = {
-    service: 'Gemini', used_for: 'Photo analysis, the audit and drafting assistant answers',
+    service: 'Gemini', used_for: 'Stand-in when Claude fails, and Compare photos in My Inspections', optional: true,
     key_set: Boolean(apiKey), model, ok: false, answered_in_ms: null, problem: '', fix: '', available_models: [],
   };
-  if (!apiKey) return { ...base, problem: 'GEMINI_API_KEY is not set for this deployment.', fix: 'Add GEMINI_API_KEY in Vercel for this environment (Production or Preview), then redeploy.' };
+  if (!apiKey) return { ...base, problem: 'GEMINI_API_KEY is not set for this deployment.', fix: 'Optional. The audit and assistant run on Claude alone. Add GEMINI_API_KEY in Vercel only if you want a stand-in for Claude, or use Compare photos in My Inspections.' };
   const headers = { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' };
   const root = 'https://generativelanguage.googleapis.com/v1beta/models';
   try {
@@ -83,10 +85,10 @@ async function checkGemini(apiKey: string | undefined, model: string, call: Fetc
 
 async function checkClaude(apiKey: string | undefined, model: string, call: Fetch): Promise<ServiceStatus> {
   const base: ServiceStatus = {
-    service: 'Claude', used_for: 'Reading the letter and lease, reviewing assistant answers, and standing in when Gemini is busy',
+    service: 'Claude', used_for: 'Reading documents and photos, the audit, and the case assistant',
     key_set: Boolean(apiKey), model, ok: false, answered_in_ms: null, problem: '', fix: '', available_models: [],
   };
-  if (!apiKey) return { ...base, problem: 'ANTHROPIC_API_KEY is not set for this deployment.', fix: 'Add ANTHROPIC_API_KEY in Vercel for this environment, then redeploy. Without it there is no stand-in when Gemini is busy.' };
+  if (!apiKey) return { ...base, problem: 'ANTHROPIC_API_KEY is not set for this deployment.', fix: 'Add ANTHROPIC_API_KEY in Vercel for this environment, then redeploy. Claude runs the audit and the assistant.' };
   const client = claudeClient(apiKey, call);
   // A typed error says which step failed; only its status is reported.
   const status = (error: unknown) => (error instanceof Anthropic.APIError && error.status ? error.status : null);
@@ -137,7 +139,7 @@ export async function checkAiServices(options: {
 }): Promise<ServiceStatus[]> {
   const call = options.fetch ?? fetch;
   return Promise.all([
-    checkGemini(options.geminiKey, options.geminiModel, call),
     checkClaude(options.claudeKey, options.claudeModel, call),
+    checkGemini(options.geminiKey, options.geminiModel, call),
   ]);
 }

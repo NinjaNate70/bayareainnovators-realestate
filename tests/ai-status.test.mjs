@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkAiServices } from '../lib/ai-status.ts';
 
+// Results by service, whatever order they come back in.
+const check = async (options) => {
+  const found = await checkAiServices(options);
+  return [found.find((item) => item.service === 'Gemini'), found.find((item) => item.service === 'Claude')];
+};
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 const geminiModels = { models: [
   { name: 'models/gemini-flash-a', supportedGenerationMethods: ['generateContent'] },
@@ -24,7 +29,7 @@ const working = async (url, init) => {
 };
 
 test('reports both services working, without leaking keys', async () => {
-  const [gemini, claude] = await checkAiServices({ ...base, fetch: working });
+  const [gemini, claude] = await check({ ...base, fetch: working });
   assert.deepEqual([gemini.service, gemini.ok, gemini.key_set, gemini.model], ['Gemini', true, true, 'gemini-flash-a']);
   assert.deepEqual([claude.service, claude.ok, claude.model], ['Claude', true, 'claude-a']);
   assert.ok(gemini.answered_in_ms >= 0 && claude.answered_in_ms >= 0);
@@ -33,7 +38,7 @@ test('reports both services working, without leaking keys', async () => {
 
 test('a missing key is reported without calling the service', async () => {
   let calls = 0;
-  const [gemini, claude] = await checkAiServices({ geminiModel: 'gemini-flash-a', claudeModel: 'claude-a', fetch: async () => { calls += 1; return json({}); } });
+  const [gemini, claude] = await check({ geminiModel: 'gemini-flash-a', claudeModel: 'claude-a', fetch: async () => { calls += 1; return json({}); } });
   assert.equal(calls, 0);
   assert.deepEqual([gemini.ok, gemini.key_set, claude.ok, claude.key_set], [false, false, false, false]);
   assert.match(gemini.problem, /GEMINI_API_KEY is not set/);
@@ -41,40 +46,46 @@ test('a missing key is reported without calling the service', async () => {
 });
 
 test('a rejected key, an unknown model and no credit each get their own explanation', async () => {
-  const [badKey] = await checkAiServices({ ...base, fetch: async (url) => (String(url).includes('googleapis.com') ? json({ error: { message: 'API key not valid g-secret' } }, 400) : working(url, { headers: { authorization: 'Bearer c-secret' } })) });
+  const [badKey] = await check({ ...base, fetch: async (url) => (String(url).includes('googleapis.com') ? json({ error: { message: 'API key not valid g-secret' } }, 400) : working(url, { headers: { authorization: 'Bearer c-secret' } })) });
   assert.match(badKey.problem, /rejected the API key \(400\)/);
   // Provider error text is never passed on.
   assert.ok(!JSON.stringify(badKey).includes('not valid'));
 
-  const [wrongGemini, wrongClaude] = await checkAiServices({ ...base, geminiModel: 'gemini-9-ultra', claudeModel: 'claude-missing', fetch: working });
+  const [wrongGemini, wrongClaude] = await check({ ...base, geminiModel: 'gemini-9-ultra', claudeModel: 'claude-missing', fetch: working });
   assert.match(wrongGemini.problem, /“gemini-9-ultra” is not available to this key/);
   assert.deepEqual(wrongGemini.available_models, ['gemini-flash-a', 'gemini-pro-x']);
   assert.deepEqual(wrongClaude.available_models, ['claude-a', 'claude-b']);
   assert.match(wrongClaude.fix, /Set ANTHROPIC_MODEL/);
 
   const onClaude = (respond) => async (url, init) => (String(url).includes('anthropic.com') ? respond(String(url)) : working(url, init));
-  const [, badClaudeKey] = await checkAiServices({ ...base, fetch: onClaude(() => claudeError(401, 'authentication_error')) });
+  const [, badClaudeKey] = await check({ ...base, fetch: onClaude(() => claudeError(401, 'authentication_error')) });
   assert.match(badClaudeKey.problem, /Claude rejected the API key \(401\)/);
-  const [, noCredit] = await checkAiServices({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(400, 'invalid_request_error'))) });
+  const [, noCredit] = await check({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(400, 'invalid_request_error'))) });
   assert.equal(noCredit.ok, false);
   assert.match(noCredit.problem, /accepted the key but refused a test message \(400\)/);
   assert.match(noCredit.fix, /Billing in the Claude Console/);
-  const [, limited] = await checkAiServices({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(429, 'rate_limit_error'))) });
+  const [, limited] = await check({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(429, 'rate_limit_error'))) });
   assert.match(limited.problem, /rate limit is used up/);
-  const [, busy] = await checkAiServices({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(529, 'overloaded_error'))) });
+  const [, busy] = await check({ ...base, fetch: onClaude((url) => (url.includes('/v1/models') ? json(claudeModels) : claudeError(529, 'overloaded_error'))) });
   assert.match(busy.problem, /overloaded or down right now \(529\)/);
   // Provider error text is never passed on.
   assert.ok(!JSON.stringify([badClaudeKey, noCredit, limited, busy]).includes('must not be shown'));
 });
 
 test('overload and slowness are told apart from setup problems', async () => {
-  const [busy] = await checkAiServices({ ...base, fetch: async (url, init) => (String(url).includes(':generateContent') ? json({}, 503) : working(url, init)) });
+  const [busy] = await check({ ...base, fetch: async (url, init) => (String(url).includes(':generateContent') ? json({}, 503) : working(url, init)) });
   assert.match(busy.problem, /overloaded or down right now \(503\)/);
-  const [slow] = await checkAiServices({ ...base, fetch: async (url, init) => {
+  const [slow] = await check({ ...base, fetch: async (url, init) => {
     if (String(url).includes(':generateContent')) throw Object.assign(new Error('aborted'), { name: 'TimeoutError' });
     return working(url, init);
   } });
   assert.match(slow.problem, /did not answer a one-word test within 15 seconds/);
-  const [unreachable] = await checkAiServices({ ...base, fetch: async (url, init) => { if (String(url).includes('googleapis.com')) throw new TypeError('fetch failed'); return working(url, init); } });
+  const [unreachable] = await check({ ...base, fetch: async (url, init) => { if (String(url).includes('googleapis.com')) throw new TypeError('fetch failed'); return working(url, init); } });
   assert.match(unreachable.problem, /could not reach Gemini/);
+});
+
+test('Claude is listed first and Gemini is marked optional', async () => {
+  const found = await checkAiServices({ geminiModel: 'gemini-flash-a', claudeKey: 'c-secret', claudeModel: 'claude-a', fetch: working });
+  assert.deepEqual(found.map((item) => [item.service, item.ok, Boolean(item.optional)]), [['Claude', true, false], ['Gemini', false, true]]);
+  assert.match(found[1].fix, /^Optional\./);
 });
